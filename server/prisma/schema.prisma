@@ -1,0 +1,42 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id       Int       @id @default(autoincrement())
+  email    String    @unique
+  password String
+  nombre   String
+  landings Landing[]
+}
+
+model Landing {
+  id        Int      @id @default(autoincrement())
+  nombre    String
+  marca     String
+  url       String
+  estado    String   @default("ACTIVO")
+  categoria String   @default("Cober")
+
+  ftpHost String?
+  ftpUser String?
+  ftpPass String?
+  ftpPath String?
+
+  tecnologias String?
+  notas       String?
+  imagenUrl   String?
+  sheetUrl    String?
+  formStatus  String   @default("PENDIENTE")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId Int
+  user   User @relation(fields: [userId], references: [id])
+}
