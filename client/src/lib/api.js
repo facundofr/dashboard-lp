@@ -46,4 +46,13 @@ export const api = {
 
   deleteLanding: (id) =>
     request(`/landings/${id}`, { method: 'DELETE' }),
+
+  checkLanding: (id) =>
+    request(`/landings/${id}/check`, { method: 'POST' }),
+
+  checkAllLandings: () =>
+    request('/landings/check-all', { method: 'POST' }),
+
+  getLandingLogs: (id) =>
+    request(`/landings/${id}/logs`),
 };

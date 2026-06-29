@@ -6,11 +6,10 @@ import LandingCard from "../components/LandingCard"
 import LandingFormModal from "../components/LandingFormModal"
 import { Button } from "../components/ui/button"
 import { Input } from "../components/ui/input"
-import { Badge } from "../components/ui/badge"
 import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs"
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "../components/ui/sheet"
+import { Sheet, SheetContent, SheetTrigger } from "../components/ui/sheet"
 import {
-  Home, Globe, LogOut, Menu, Search, Plus, User,
+  Globe, LogOut, Menu, Search, Plus, Home, RefreshCw, Activity, AlertTriangle, CheckCircle, XCircle,
 } from "lucide-react"
 
 const categorias = ["Cober", "Bristol", "Medicals", "Centros Médicos"]
@@ -19,6 +18,12 @@ const statusTabs = [
   { key: "ACTIVO", label: "Activas" },
   { key: "INACTIVO", label: "Inactivas" },
   { key: "EN_DESARROLLO", label: "En desarrollo" },
+]
+const uptimeFilters = [
+  { key: "todas", label: "Todo" },
+  { key: "UP", label: "Online" },
+  { key: "DOWN", label: "Caídas" },
+  { key: "sin_verificar", label: "Sin verificar" },
 ]
 const categoriaColors = {
   Cober: "bg-purple-600",
@@ -39,10 +44,15 @@ export default function Dashboard() {
   const [search, setSearch] = useState("")
   const [activeCategoria, setActiveCategoria] = useState(null)
   const [activeStatus, setActiveStatus] = useState("todas")
+  const [activeUptime, setActiveUptime] = useState("todas")
   const [editingLanding, setEditingLanding] = useState(null)
   const [loading, setLoading] = useState(true)
   const [sidebarExpanded, setSidebarExpanded] = useState(false)
   const [modalKey, setModalKey] = useState(0)
+  const [checkingAll, setCheckingAll] = useState(false)
+  const [logsModal, setLogsModal] = useState(null)
+  const [logs, setLogs] = useState([])
+  const [logsLoading, setLogsLoading] = useState(false)
 
   const fetchLandings = useCallback(async () => {
     try {
@@ -65,6 +75,13 @@ export default function Dashboard() {
     if (activeStatus !== "todas") {
       result = result.filter((l) => l.estado === activeStatus)
     }
+    if (activeUptime === "UP") {
+      result = result.filter((l) => l.ultimoStatus === "UP")
+    } else if (activeUptime === "DOWN") {
+      result = result.filter((l) => l.ultimoStatus === "DOWN")
+    } else if (activeUptime === "sin_verificar") {
+      result = result.filter((l) => !l.ultimoStatus)
+    }
     if (search) {
       const q = search.toLowerCase()
       result = result.filter((l) =>
@@ -74,7 +91,7 @@ export default function Dashboard() {
       )
     }
     setFilteredLandings(result)
-  }, [landings, activeCategoria, activeStatus, search])
+  }, [landings, activeCategoria, activeStatus, activeUptime, search])
 
   const handleCreate = async (data) => {
     await api.createLanding(data)
@@ -95,6 +112,39 @@ export default function Dashboard() {
     await api.deleteLanding(id)
     await fetchLandings()
     toast.error("Landing eliminada")
+  }
+
+  const handleCheckAll = async () => {
+    setCheckingAll(true)
+    try {
+      const res = await api.checkAllLandings()
+      toast.success(`${res.checked} landings verificadas`)
+      await fetchLandings()
+    } catch {
+      toast.error("Error al verificar todas")
+    } finally {
+      setCheckingAll(false)
+    }
+  }
+
+  const handleViewLogs = async (landing) => {
+    setLogsModal(landing)
+    setLogsLoading(true)
+    try {
+      const data = await api.getLandingLogs(landing.id)
+      setLogs(data)
+    } catch {
+      setLogs([])
+    } finally {
+      setLogsLoading(false)
+    }
+  }
+
+  const stats = {
+    total: landings.length,
+    up: landings.filter((l) => l.ultimoStatus === "UP").length,
+    down: landings.filter((l) => l.ultimoStatus === "DOWN").length,
+    sinVerificar: landings.filter((l) => !l.ultimoStatus).length,
   }
 
   const SidebarContent = ({ mobile }) => (
@@ -179,11 +229,48 @@ export default function Dashboard() {
               className="pl-9"
             />
           </div>
-          <LandingFormModal key={modalKey + "-create"} onSubmit={handleCreate}>
-            Nueva Landing
-          </LandingFormModal>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={handleCheckAll} disabled={checkingAll}>
+              <RefreshCw className={`w-4 h-4 ${checkingAll ? "animate-spin" : ""}`} />
+              Verificar todas
+            </Button>
+            <LandingFormModal key={modalKey + "-create"} onSubmit={handleCreate}>
+              Nueva Landing
+            </LandingFormModal>
+          </div>
         </header>
 
+        {/* Stats row */}
+        <div className="flex gap-3 px-3 sm:px-4 md:px-6 pt-3">
+          <div className="flex items-center gap-2 text-xs bg-card border rounded-lg px-3 py-2">
+            <Globe className="w-4 h-4 text-muted-foreground" />
+            <span className="font-medium">{stats.total}</span>
+            <span className="text-muted-foreground">total</span>
+          </div>
+          <div className="flex items-center gap-2 text-xs bg-card border rounded-lg px-3 py-2">
+            <CheckCircle className="w-4 h-4 text-green-500" />
+            <span className="font-medium">{stats.up}</span>
+            <span className="text-muted-foreground">online</span>
+          </div>
+          <div className="flex items-center gap-2 text-xs bg-card border rounded-lg px-3 py-2">
+            <XCircle className={`w-4 h-4 ${stats.down > 0 ? "text-red-500" : "text-muted-foreground"}`} />
+            <span className="font-medium">{stats.down}</span>
+            <span className="text-muted-foreground">caídas</span>
+          </div>
+          <div className="flex items-center gap-2 text-xs bg-card border rounded-lg px-3 py-2">
+            <Activity className="w-4 h-4 text-yellow-500" />
+            <span className="font-medium">{stats.sinVerificar}</span>
+            <span className="text-muted-foreground">sin verificar</span>
+          </div>
+          {stats.down > 0 && (
+            <Button variant="destructive" size="sm" className="text-xs h-8" onClick={() => setActiveUptime("DOWN")}>
+              <AlertTriangle className="w-3 h-3" />
+              {stats.down} caída{stats.down > 1 ? "s" : ""}
+            </Button>
+          )}
+        </div>
+
+        {/* Category filter */}
         <div className="flex gap-1.5 px-3 sm:px-4 md:px-6 pt-3 overflow-x-auto scrollbar-none">
           {categorias.map((cat) => (
             <button
@@ -201,18 +288,33 @@ export default function Dashboard() {
           ))}
         </div>
 
-        <div className="px-3 sm:px-4 md:px-6 pt-2">
-          <Tabs value={activeStatus} onValueChange={setActiveStatus}>
+        {/* Status tabs + Uptime filter */}
+        <div className="flex items-center gap-3 px-3 sm:px-4 md:px-6 pt-2 overflow-x-auto scrollbar-none">
+          <Tabs value={activeStatus} onValueChange={setActiveStatus} className="shrink-0">
             <TabsList>
               {statusTabs.map((tab) => (
-                <TabsTrigger key={tab.key} value={tab.key}>
-                  {tab.label}
-                </TabsTrigger>
+                <TabsTrigger key={tab.key} value={tab.key}>{tab.label}</TabsTrigger>
               ))}
             </TabsList>
           </Tabs>
+          <div className="flex gap-1">
+            {uptimeFilters.map((f) => (
+              <button
+                key={f.key}
+                onClick={() => setActiveUptime(f.key)}
+                className={`px-2.5 py-1 text-xs rounded-md font-medium transition-colors whitespace-nowrap ${
+                  activeUptime === f.key
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted text-muted-foreground hover:bg-accent"
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
         </div>
 
+        {/* Cards grid */}
         <div className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6">
           {loading ? (
             <div className="flex items-center justify-center h-full">
@@ -226,20 +328,63 @@ export default function Dashboard() {
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
-              {filteredLandings.map((landing, idx) => (
+              {filteredLandings.map((landing) => (
                 <div key={landing.id} className="w-full max-w-[400px] mx-auto sm:mx-0">
                   <LandingCard
                     landing={landing}
                     onEdit={setEditingLanding}
                     onDelete={handleDelete}
-                    variant={idx % 2 === 0 ? "3d" : "comet"}
+                    onCheck={fetchLandings}
                   />
+                  {/* View logs button */}
+                  <div className="mt-1 text-center">
+                    <button
+                      onClick={() => handleViewLogs(landing)}
+                      className="text-xs text-muted-foreground hover:text-primary transition-colors"
+                    >
+                      Ver historial de checks
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
           )}
         </div>
       </div>
+
+      {/* Logs history modal */}
+      {logsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-3 sm:p-4" onClick={() => setLogsModal(null)}>
+          <div className="bg-card rounded-xl p-5 sm:p-6 w-full max-w-lg max-h-[80vh] overflow-y-auto shadow-2xl border" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-bold mb-1">Historial de checks</h2>
+            <p className="text-sm text-muted-foreground mb-4">{logsModal.nombre} — {logsModal.url}</p>
+            {logsLoading ? (
+              <div className="flex justify-center py-8">
+                <div className="w-6 h-6 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : logs.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-8">Sin verificaciones aún</p>
+            ) : (
+              <div className="space-y-2">
+                {logs.map((log) => (
+                  <div key={log.id} className="flex items-center gap-3 text-xs p-2 rounded-lg bg-muted/50">
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${log.isUp ? "bg-green-500" : "bg-red-500"}`} />
+                    <span className="font-medium">{log.isUp ? `OK ${log.statusCode || ""}` : "DOWN"}</span>
+                    {log.responseMs && <span className="text-muted-foreground">{log.responseMs}ms</span>}
+                    {log.error && <span className="text-destructive truncate">{log.error}</span>}
+                    <span className="text-muted-foreground ml-auto shrink-0">
+                      {new Date(log.createdAt).toLocaleString("es-AR")}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex justify-end mt-4">
+              <Button variant="outline" onClick={() => setLogsModal(null)}>Cerrar</Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Edit modal */}
       {editingLanding && (

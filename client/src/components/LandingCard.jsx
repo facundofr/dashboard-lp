@@ -1,7 +1,9 @@
 import { useRef, useState } from "react"
 import { motion } from "framer-motion"
-import { ExternalLink, Pencil, Trash2, FileSpreadsheet } from "lucide-react"
+import { ExternalLink, Pencil, Trash2, FileSpreadsheet, Activity, RefreshCw } from "lucide-react"
 import { Badge } from "./ui/badge"
+import { Button } from "./ui/button"
+import { api } from "../lib/api"
 
 const estadoColors = {
   ACTIVO: "bg-green-500",
@@ -22,15 +24,29 @@ const categoriaGradients = {
   "Centros Médicos": "from-amber-600/80 to-orange-600/80",
 }
 
-export default function LandingCard({ landing, onEdit, onDelete, variant = "comet" }) {
+function timeAgo(date) {
+  if (!date) return ""
+  const diff = Date.now() - new Date(date).getTime()
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1) return "ahora"
+  if (mins < 60) return `hace ${mins}m`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `hace ${hrs}h`
+  const days = Math.floor(hrs / 24)
+  return `hace ${days}d`
+}
+
+export default function LandingCard({ landing, onEdit, onDelete, onCheck }) {
   const cardRef = useRef(null)
   const [rotateX, setRotateX] = useState(0)
   const [rotateY, setRotateY] = useState(0)
-  
+  const [checking, setChecking] = useState(false)
+  const [checkResult, setCheckResult] = useState(null)
+
   const hasImage = landing.imagenUrl && landing.imagenUrl.trim() !== ""
 
   const handleMouseMove = (e) => {
-    if (!cardRef.current || variant !== "3d") return
+    if (!cardRef.current) return
     const rect = cardRef.current.getBoundingClientRect()
     const x = e.clientX - rect.left
     const y = e.clientY - rect.top
@@ -45,6 +61,30 @@ export default function LandingCard({ landing, onEdit, onDelete, variant = "come
     setRotateY(0)
   }
 
+  const handleCheck = async (e) => {
+    e.stopPropagation()
+    setChecking(true)
+    try {
+      const result = await api.checkLanding(landing.id)
+      setCheckResult(result)
+      if (onCheck) onCheck()
+    } catch {
+      setCheckResult({ url: { isUp: false, error: "Error de conexión" } })
+    } finally {
+      setChecking(false)
+    }
+  }
+
+  const uptimeBadge = landing.ultimoStatus ? (
+    <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium ${
+      landing.ultimoStatus === "UP" ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"
+    }`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${landing.ultimoStatus === "UP" ? "bg-green-400" : "bg-red-400"}`} />
+      {landing.ultimoStatus === "UP" ? `OK ${landing.ultimoCodigo || ""}` : "DOWN"}
+      {landing.ultimoMs ? ` ${landing.ultimoMs}ms` : ""}
+    </span>
+  ) : null
+
   return (
     <motion.div
       className="w-full"
@@ -58,7 +98,7 @@ export default function LandingCard({ landing, onEdit, onDelete, variant = "come
         onMouseLeave={handleMouseLeave}
         className="relative rounded-xl border bg-card text-card-foreground shadow overflow-hidden group"
         style={{
-          transform: variant === "3d" ? `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg)` : undefined,
+          transform: `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg)`,
           transition: "transform 0.1s ease-out",
           minHeight: "300px",
         }}
@@ -100,12 +140,13 @@ export default function LandingCard({ landing, onEdit, onDelete, variant = "come
             </div>
           </div>
 
-          <div className="flex items-center gap-2 mb-3">
+          <div className="flex items-center gap-2 mb-3 flex-wrap">
             <span className={`w-2 h-2 rounded-full ${estadoColors[landing.estado] || "bg-gray-400"}`} />
             <span className="text-xs font-medium opacity-90">{estadoLabels[landing.estado] || landing.estado}</span>
             <Badge variant="outline" className={`text-xs ${hasImage ? "bg-white/20 backdrop-blur-sm border-white/30" : ""}`}>
               {landing.categoria}
             </Badge>
+            {uptimeBadge}
           </div>
 
           <div className="w-full mb-2">
@@ -145,6 +186,44 @@ export default function LandingCard({ landing, onEdit, onDelete, variant = "come
                 }`} />
                 {landing.formStatus === "OK" ? "Verificado" : landing.formStatus === "ERROR" ? "Con error" : "Pendiente"}
               </span>
+            </div>
+          )}
+
+          {/* Check & Logs row */}
+          <div className="flex items-center gap-2 mb-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs gap-1"
+              onClick={handleCheck}
+              disabled={checking}
+            >
+              <RefreshCw className={`w-3 h-3 ${checking ? "animate-spin" : ""}`} />
+              Verificar
+            </Button>
+            {landing.logs && landing.logs.length > 0 && (
+              <span className="text-xs text-muted-foreground">
+                {landing._count?.logs || landing.logs.length} checks
+              </span>
+            )}
+            {landing.ultimoCheck && (
+              <span className="text-xs text-muted-foreground ml-auto">{timeAgo(landing.ultimoCheck)}</span>
+            )}
+          </div>
+
+          {/* Check result feedback */}
+          {checkResult && (
+            <div className={`text-xs mb-2 px-2 py-1 rounded ${
+              checkResult.url?.isUp ? "bg-green-500/10 text-green-400" : "bg-red-500/10 text-red-400"
+            }`}>
+              {checkResult.url?.isUp
+                ? `✓ ${checkResult.url.statusCode} — ${checkResult.url.responseMs}ms`
+                : `✗ ${checkResult.url?.error || "Error"}`}
+              {checkResult.ssl?.valid !== undefined && checkResult.ssl.valid !== null && (
+                <span className="ml-2">
+                  SSL: {checkResult.ssl.valid ? `${checkResult.ssl.daysRemaining}d` : checkResult.ssl.error || "Inválido"}
+                </span>
+              )}
             </div>
           )}
 
