@@ -16,7 +16,7 @@ const estados = ["ACTIVO", "INACTIVO", "EN_DESARROLLO"]
 const emptyForm = {
   nombre: "", marca: "", url: "", estado: "ACTIVO", categoria: "Cober",
   ftpHost: "", ftpUser: "", ftpPass: "", ftpPath: "",
-  tecnologias: "", notas: "", imagenUrl: "", sheetUrl: "", formStatus: "PENDIENTE",
+  tecnologias: "", notas: "", imagenUrl: "", sheetUrl: "", formStatus: "PENDIENTE", tags: "", cliente: "",
 }
 
 export default function LandingFormModal({ onSubmit, initialData, onSuccess, children }) {
@@ -46,7 +46,7 @@ export default function LandingFormModal({ onSubmit, initialData, onSuccess, chi
           {children || "Nueva Landing"}
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-[600px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-[800px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{initialData ? "Editar Landing" : "Nueva Landing"}</DialogTitle>
         </DialogHeader>
@@ -59,6 +59,10 @@ export default function LandingFormModal({ onSubmit, initialData, onSuccess, chi
             <div className="flex flex-col space-y-2">
               <Label htmlFor="marca">Marca</Label>
               <Input id="marca" name="marca" value={form.marca} onChange={handleChange} placeholder="Nike" required />
+            </div>
+            <div className="flex flex-col space-y-2">
+              <Label htmlFor="cliente">Cliente</Label>
+              <Input id="cliente" name="cliente" value={form.cliente} onChange={handleChange} placeholder="Nombre del cliente" />
             </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -145,6 +149,10 @@ export default function LandingFormModal({ onSubmit, initialData, onSuccess, chi
                 <Input id="ftpPass" name="ftpPass" type="password" value={form.ftpPass} onChange={handleChange} placeholder="••••••••" />
               </div>
             </div>
+          </div>
+          <div className="flex flex-col space-y-2">
+            <Label htmlFor="tags">Tags</Label>
+            <Input id="tags" name="tags" value={form.tags} onChange={handleChange} placeholder="premium, urgencia, redesign" />
           </div>
           <div className="flex flex-col space-y-2">
             <Label htmlFor="tecnologias">Tecnologías</Label>

@@ -1,6 +1,6 @@
 import { useRef, useState } from "react"
 import { motion } from "framer-motion"
-import { ExternalLink, Pencil, Trash2, FileSpreadsheet, Activity, RefreshCw } from "lucide-react"
+import { ExternalLink, Pencil, Trash2, FileSpreadsheet, Activity, RefreshCw, Rocket, Tag, Store } from "lucide-react"
 import { Badge } from "./ui/badge"
 import { Button } from "./ui/button"
 import { api } from "../lib/api"
@@ -42,6 +42,17 @@ export default function LandingCard({ landing, onEdit, onDelete, onCheck }) {
   const [rotateY, setRotateY] = useState(0)
   const [checking, setChecking] = useState(false)
   const [checkResult, setCheckResult] = useState(null)
+  const [deploying, setDeploying] = useState(false)
+
+  const handleDeploy = async (e) => {
+    e.stopPropagation()
+    setDeploying(true)
+    try {
+      await api.registerDeploy(landing.id)
+      if (onCheck) onCheck()
+    } catch {}
+    setDeploying(false)
+  }
 
   const hasImage = landing.imagenUrl && landing.imagenUrl.trim() !== ""
 
@@ -136,6 +147,11 @@ export default function LandingCard({ landing, onEdit, onDelete, onCheck }) {
               <div className="min-w-0 flex-1">
                 <h3 className="text-lg font-bold truncate">{landing.nombre}</h3>
                 <p className="text-sm opacity-80 truncate">{landing.marca}</p>
+                {landing.cliente && (
+                  <p className="text-xs opacity-60 truncate flex items-center gap-1 mt-0.5">
+                    <Store className="w-3 h-3" /> {landing.cliente}
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -206,6 +222,19 @@ export default function LandingCard({ landing, onEdit, onDelete, onCheck }) {
                 {landing._count?.logs || landing.logs.length} checks
               </span>
             )}
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs gap-1"
+              onClick={handleDeploy}
+              disabled={deploying}
+            >
+              <Rocket className={`w-3 h-3 ${deploying ? "animate-pulse" : ""}`} />
+              Deploy
+            </Button>
+            {landing.ultimoDeploy && (
+              <span className="text-xs text-muted-foreground">{timeAgo(landing.ultimoDeploy)}</span>
+            )}
             {landing.ultimoCheck && (
               <span className="text-xs text-muted-foreground ml-auto">{timeAgo(landing.ultimoCheck)}</span>
             )}
@@ -224,6 +253,53 @@ export default function LandingCard({ landing, onEdit, onDelete, onCheck }) {
                   SSL: {checkResult.ssl.valid ? `${checkResult.ssl.daysRemaining}d` : checkResult.ssl.error || "Inválido"}
                 </span>
               )}
+            </div>
+          )}
+
+          {landing.tags && (
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {landing.tags.split(",").map((tag, i) => (
+                <span
+                  key={i}
+                  className={`text-xs px-2 py-0.5 rounded-full border ${
+                    hasImage
+                      ? "bg-white/10 backdrop-blur-sm border-white/20 text-white"
+                      : "bg-secondary/50 text-secondary-foreground border-border"
+                  }`}
+                >
+                  {tag.trim()}
+                </span>
+              ))}
+            </div>
+          )}
+          {landing.metaTags && (() => {
+            const tags = typeof landing.metaTags === 'string' ? JSON.parse(landing.metaTags) : landing.metaTags
+            if (tags.error) return null
+            return (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {tags.gtm && <span className="text-xs px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-400 font-mono">{tags.gtm}</span>}
+                {tags.ga && <span className="text-xs px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 font-mono">{tags.ga}</span>}
+                {tags.fbPixel && <span className="text-xs px-1.5 py-0.5 rounded bg-blue-600/20 text-blue-400 font-mono">FB Pixel</span>}
+                {tags.gsc && <span className="text-xs px-1.5 py-0.5 rounded bg-green-500/20 text-green-400">GSC</span>}
+                {tags.ogTitle && <span className="text-xs px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400">OG</span>}
+              </div>
+            )
+          })()}
+
+          {landing.ultimoSslDias !== null && (
+            <div className="flex items-center gap-1.5 mb-2">
+              <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium ${
+                landing.ultimoSslDias > 30 ? "bg-green-500/20 text-green-400" :
+                landing.ultimoSslDias > 7 ? "bg-yellow-500/20 text-yellow-400" :
+                "bg-red-500/20 text-red-400"
+              }`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${
+                  landing.ultimoSslDias > 30 ? "bg-green-400" :
+                  landing.ultimoSslDias > 7 ? "bg-yellow-400" :
+                  "bg-red-400"
+                }`} />
+                SSL: {landing.ultimoSslDias}d
+              </span>
             </div>
           )}
 

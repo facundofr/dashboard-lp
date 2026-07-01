@@ -3,16 +3,45 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = "file:./dev.db"
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model User {
-  id       Int       @id @default(autoincrement())
-  email    String    @unique
-  password String
-  nombre   String
-  landings Landing[]
+  id                    Int       @id @default(autoincrement())
+  email                 String    @unique
+  password              String
+  nombre                String
+  role                  String    @default("user")
+  plan                  String    @default("free")
+  notifyEmail           Boolean   @default(true)
+  sendSslAlerts         Boolean   @default(true)
+  avatarUrl             String?
+  emailVerified         Boolean   @default(false)
+  emailVerificationToken String?
+  resetPasswordToken    String?
+  resetPasswordExpires  DateTime?
+  provider              String?
+  providerId            String?
+  createdAt             DateTime  @default(now())
+
+  landings              Landing[]
+  webhookConfigs        WebhookConfig[]
+  auditLogs             AuditLog[]
+  apiKeys               ApiKey[]
+  statusPage            StatusPage?
+}
+
+model WebhookConfig {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  url       String
+  events    String   @default("down,ssl_expiring")
+  enabled   Boolean  @default(true)
+  secret    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Landing {
@@ -23,29 +52,50 @@ model Landing {
   estado    String   @default("ACTIVO")
   categoria String   @default("Cober")
 
-  ftpHost String?
-  ftpUser String?
-  ftpPass String?
-  ftpPath String?
+  ftpHost   String?
+  ftpUser   String?
+  ftpPass   String?
+  ftpPath   String?
 
   tecnologias String?
   notas       String?
   imagenUrl   String?
   sheetUrl    String?
   formStatus  String   @default("PENDIENTE")
+  tags        String?
+  cliente     String?
+  metaTags    Json?
 
-  ultimoCheck   DateTime?
-  ultimoStatus  String?
-  ultimoCodigo  Int?
-  ultimoMs      Int?
+  ultimoDeploy DateTime?
+
+  ultimoCheck     DateTime?
+  ultimoStatus    String?
+  ultimoCodigo    Int?
+  ultimoMs        Int?
+  ultimoSslValido Boolean?
+  ultimoSslDias   Int?
+  ultimoSslVence  DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   userId Int
-  user   User @relation(fields: [userId], references: [id])
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  logs CheckLog[]
+  logs   CheckLog[]
+  audits AuditLog[]
+}
+
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  landingId Int?
+  action    String
+  details   String?
+  createdAt DateTime @default(now())
+
+  user    User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  landing Landing? @relation(fields: [landingId], references: [id], onDelete: SetNull)
 }
 
 model CheckLog {
@@ -57,4 +107,31 @@ model CheckLog {
   error       String?
   createdAt   DateTime @default(now())
   landing     Landing  @relation(fields: [landingId], references: [id], onDelete: Cascade)
+}
+
+model ApiKey {
+  id         Int       @id @default(autoincrement())
+  name       String    @default("API Key")
+  keyHash    String    @unique
+  prefix     String
+  userId     Int
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  enabled    Boolean   @default(true)
+  expiresAt  DateTime?
+  lastUsedAt DateTime?
+  createdAt  DateTime  @default(now())
+}
+
+model StatusPage {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  slug      String   @unique
+  title     String   @default("Estado del Servicio")
+  subtitle  String?
+  logoUrl   String?
+  brandColor String  @default("#7c3aed")
+  isPublic  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

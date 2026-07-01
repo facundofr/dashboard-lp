@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { api } from "../lib/api";
 
 const AuthContext = createContext(null);
@@ -7,14 +7,27 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  const syncUser = useCallback(async () => {
+    try {
+      const fresh = await api.getUserSettings();
+      setUser(fresh);
+      localStorage.setItem("user", JSON.stringify(fresh));
+    } catch {
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      setUser(null);
+    }
+  }, []);
+
   useEffect(() => {
     const token = localStorage.getItem("token");
     const saved = localStorage.getItem("user");
     if (token && saved) {
       setUser(JSON.parse(saved));
+      syncUser().catch(() => {});
     }
     setLoading(false);
-  }, []);
+  }, [syncUser]);
 
   const login = async (email, password) => {
     const data = await api.login(email, password);
@@ -32,14 +45,17 @@ export function AuthProvider({ children }) {
     return res;
   };
 
-  const logout = () => {
+  const logout = useCallback(async () => {
+    try {
+      await api.logout();
+    } catch {}
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     setUser(null);
-  };
+  }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, register, logout, syncUser }}>
       {children}
     </AuthContext.Provider>
   );
