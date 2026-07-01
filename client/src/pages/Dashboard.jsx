@@ -3,6 +3,7 @@ import { toast } from "sonner"
 import { useAuth } from "../context/AuthContext"
 import { useNotifications } from "../context/NotificationContext"
 import { useTheme } from "../context/ThemeContext"
+import Logo from "../components/Logo"
 import { api } from "../lib/api"
 import { usePolling } from "../lib/usePolling"
 import LandingCard from "../components/LandingCard"
@@ -11,7 +12,8 @@ import UptimeChart from "../components/UptimeChart"
 import ProfileSettings from "../components/ProfileSettings"
 import StatusPageSettings from "../components/StatusPageSettings"
 import ApiKeyManager from "../components/ApiKeyManager"
-import PlanSelector from "../components/PlanSelector"
+
+
 import OnboardingChecklist from "../components/OnboardingChecklist"
 import { Button } from "../components/ui/button"
 import { Input } from "../components/ui/input"
@@ -44,44 +46,6 @@ const categoriaColors = {
   Medicals: "bg-emerald-600",
   "Centros Médicos": "bg-amber-600",
 }
-
-  const handleExportCSV = () => {
-    const headers = ["Nombre", "Marca", "URL", "Estado", "Categoría", "Tags", "Último Status", "Código", "Tiempo (ms)", "SSL (días)", "Form Status", "Tecnologías"]
-    const rows = landings.map((l) => [
-      l.nombre, l.marca, l.url, l.estado, l.categoria, l.tags || "",
-      l.ultimoStatus || "", l.ultimoCodigo || "", l.ultimoMs || "", l.ultimoSslDias ?? "", l.formStatus, l.tecnologias || "",
-    ])
-    const csv = [headers.join(","), ...rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(","))].join("\n")
-    const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8;charset=utf-8" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url; a.download = `landings-${new Date().toISOString().slice(0, 10)}.csv`
-    a.click(); URL.revokeObjectURL(url)
-  }
-
-  const handleOpenAudit = async () => {
-    setAuditModal(true)
-    setAuditLoading(true)
-    try {
-      const data = await api.getAuditLogs()
-      setAuditLogs(data)
-    } catch {
-      setAuditLogs([])
-    } finally {
-      setAuditLoading(false)
-    }
-  }
-
-  const sidebarLinks = [
-    { label: "Dashboard", icon: Home },
-    { label: "Landings", icon: Globe },
-    { label: "SSL", icon: ShieldAlert },
-    { label: "Status Page", icon: Share2, action: () => setStatusPageOpen(true) },
-    { label: "API Keys", icon: Key, action: () => setApiKeysOpen(true) },
-    { label: "Plan", icon: Crown, action: () => setPlanModal(true) },
-    { label: "Auditoría", icon: History },
-    { label: "Configuración", icon: Settings },
-  ]
 
 const ITEMS_PER_PAGE = 12
 
@@ -117,7 +81,21 @@ export default function Dashboard() {
   const [bulkChecking, setBulkChecking] = useState(false)
   const [statusPageOpen, setStatusPageOpen] = useState(false)
   const [apiKeysOpen, setApiKeysOpen] = useState(false)
-  const [planModal, setPlanModal] = useState(false)
+  const [sheetOpen, setSheetOpen] = useState(false)
+
+
+
+  const sidebarLinks = [
+    { label: "Dashboard", icon: Home, action: () => { setActiveCategoria(null); setActiveStatus("todas"); setActiveUptime("todas"); setActiveTag(null); setSearch(""); setCurrentPage(1); } },
+    { label: "Landings", icon: Globe, action: () => document.querySelector(".flex-1.overflow-y-auto")?.scrollTo({ top: 0, behavior: "smooth" }) },
+    { label: "SSL", icon: ShieldAlert, action: () => setSslModal(true) },
+    { label: "Status Page", icon: Share2, action: () => setStatusPageOpen(true) },
+    { label: "API Keys", icon: Key, action: () => setApiKeysOpen(true) },
+
+
+    { label: "Auditoría", icon: History, action: () => { api.getAuditLogs().then(setAuditLogs).catch(() => {}).finally(() => setAuditLoading(false)); setAuditModal(true); } },
+    { label: "Configuración", icon: Settings, action: () => setSettingsOpen(true) },
+  ]
 
   const toggleSelect = (id) => {
     setSelectedIds((prev) => {
@@ -295,21 +273,23 @@ export default function Dashboard() {
     sinVerificar: landings.filter((l) => !l.ultimoStatus).length,
   }
 
-  const SidebarContent = ({ mobile }) => (
+  const SidebarContent = ({ mobile, closeSheet }) => {
+    const handleAction = (action) => {
+      action()
+      if (closeSheet) closeSheet()
+    }
+    return (
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-2 px-3 py-4">
-        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center text-white font-bold text-xs shrink-0">
-          GL
+        <div className="overflow-hidden shrink-0">
+          <Logo className="h-10 w-auto text-foreground" />
         </div>
-        {(sidebarExpanded || mobile) && (
-          <span className="text-sm font-semibold whitespace-nowrap">Gestor Landings</span>
-        )}
       </div>
       <div className="flex-1 space-y-1 px-2">
         {sidebarLinks.map((link) => (
           <button
             key={link.label}
-            onClick={link.action ? link.action : link.label === "Auditoría" ? handleOpenAudit : link.label === "Configuración" ? () => setSettingsOpen(true) : undefined}
+            onClick={() => handleAction(link.action)}
             className="flex items-center gap-3 w-full px-2 py-2 text-sm rounded-lg hover:bg-accent transition-colors"
           >
             <link.icon className="w-5 h-5 shrink-0" />
@@ -348,7 +328,8 @@ export default function Dashboard() {
         </div>
       </div>
     </div>
-  )
+    )
+  }
 
   return (
     <div className="flex h-screen w-full bg-background overflow-hidden">
@@ -364,17 +345,16 @@ export default function Dashboard() {
 
       {/* Mobile header */}
       <div className="flex md:hidden items-center gap-2 p-3 border-b bg-background fixed top-0 left-0 right-0 z-30">
-        <Sheet>
+        <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
           <SheetTrigger asChild>
             <Button variant="ghost" size="icon">
               <Menu className="w-5 h-5" />
             </Button>
           </SheetTrigger>
           <SheetContent side="left" className="w-64 p-0">
-            <SidebarContent mobile />
+            <SidebarContent mobile closeSheet={() => setSheetOpen(false)} />
           </SheetContent>
         </Sheet>
-        <span className="font-semibold">Gestor Landings</span>
       </div>
 
       {/* Main content */}
@@ -902,17 +882,8 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Plan modal */}
-      {planModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-3 sm:p-4" onClick={() => setPlanModal(false)}>
-          <div className="bg-card rounded-xl p-5 sm:p-6 w-full max-w-2xl max-h-[85vh] overflow-y-auto shadow-2xl border" onClick={(e) => e.stopPropagation()}>
-            <PlanSelector />
-            <div className="flex justify-end mt-6 pt-4 border-t">
-              <Button variant="outline" onClick={() => setPlanModal(false)}>Cerrar</Button>
-            </div>
-          </div>
-        </div>
-      )}
+
+
     </div>
   )
 }

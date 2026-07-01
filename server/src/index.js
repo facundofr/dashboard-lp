@@ -36,14 +36,14 @@ app.use('/api/auth', authRoutes);
 app.use('/api/landings', landingRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/webhooks', webhookRoutes);
-app.use('/status', statusPageRoutes);
-app.use('/v1', publicApiRoutes);
+app.use('/api/status', statusPageRoutes);
+app.use('/api/v1', publicApiRoutes);
 
 const clientBuild = path.join(__dirname, '..', '..', 'client', 'dist');
 app.use(express.static(clientBuild));
 
 app.get('*', (req, res, next) => {
-  if (req.path.startsWith('/api') || req.path.startsWith('/v1') || req.path.startsWith('/status')) return next();
+  if (req.path.startsWith('/api')) return next();
   res.sendFile(path.join(clientBuild, 'index.html'));
 });
 

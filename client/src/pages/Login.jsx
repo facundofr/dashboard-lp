@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { Link } from "react-router-dom"
 import { useAuth } from "../context/AuthContext"
+import Logo from "../components/Logo"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card"
 import { Input } from "../components/ui/input"
 import { Label } from "../components/ui/label"
@@ -30,7 +31,11 @@ export default function Login() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted p-4">
-      <Card className="w-full max-w-md">
+      <div className="w-full max-w-md space-y-6">
+        <div className="flex justify-center">
+          <Logo className="h-20 w-auto text-foreground" />
+        </div>
+        <Card>
         <CardHeader className="text-center">
           <CardTitle className="text-2xl">Gestor de Landings</CardTitle>
           <CardDescription>
@@ -74,7 +79,8 @@ export default function Login() {
             </Button>
           </div>
         </CardContent>
-      </Card>
+        </Card>
+      </div>
     </div>
   )
 }

@@ -22,10 +22,12 @@ const emptyForm = {
 export default function LandingFormModal({ onSubmit, initialData, onSuccess, children }) {
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState(emptyForm)
+  const [error, setError] = useState("")
 
   useEffect(() => {
     if (open) {
       setForm(initialData ? { ...initialData } : { ...emptyForm })
+      setError("")
     }
   }, [open, initialData])
 
@@ -33,9 +35,14 @@ export default function LandingFormModal({ onSubmit, initialData, onSuccess, chi
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    await onSubmit(form)
-    setOpen(false)
-    if (onSuccess) onSuccess()
+    setError("")
+    try {
+      await onSubmit(form)
+      setOpen(false)
+      if (onSuccess) onSuccess()
+    } catch (err) {
+      setError(err.message)
+    }
   }
 
   return (
@@ -46,7 +53,7 @@ export default function LandingFormModal({ onSubmit, initialData, onSuccess, chi
           {children || "Nueva Landing"}
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-[800px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-[800px] max-h-[90vh] overflow-y-auto" onInteractOutside={(e) => e.preventDefault()}>
         <DialogHeader>
           <DialogTitle>{initialData ? "Editar Landing" : "Nueva Landing"}</DialogTitle>
         </DialogHeader>
@@ -166,6 +173,7 @@ export default function LandingFormModal({ onSubmit, initialData, onSuccess, chi
               placeholder="Información adicional..."
             />
           </div>
+          {error && <p className="text-sm text-destructive">{error}</p>}
           <div className="flex justify-end gap-3">
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               Cancelar
