@@ -1,20 +1,24 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useRef } from "react"
 import { toast } from "sonner"
 import { useAuth } from "../context/AuthContext"
 import { useNotifications } from "../context/NotificationContext"
 import { useTheme } from "../context/ThemeContext"
+import { useLandings } from "../hooks/useLandings"
+import { useModals } from "../hooks/useModals"
+import { useActiveIncidents } from "../hooks/useIncidents"
 import Logo from "../components/Logo"
 import { api } from "../lib/api"
-import { usePolling } from "../lib/usePolling"
-import LandingCard from "../components/LandingCard"
-import LandingFormModal from "../components/LandingFormModal"
+import BranchCard from "../components/BranchCard"
+import BranchFormModal from "../components/BranchFormModal"
 import UptimeChart from "../components/UptimeChart"
 import ProfileSettings from "../components/ProfileSettings"
 import StatusPageSettings from "../components/StatusPageSettings"
 import ApiKeyManager from "../components/ApiKeyManager"
-
-
+import WebhookSettings from "../components/WebhookSettings"
+import UserManager from "../components/UserManager"
 import OnboardingChecklist from "../components/OnboardingChecklist"
+import CategoryManager from "../components/CategoryManager"
+import TemplateTypeManager from "../components/TemplateTypeManager"
 import { Button } from "../components/ui/button"
 import { Input } from "../components/ui/input"
 import { Label } from "../components/ui/label"
@@ -23,11 +27,12 @@ import { Sheet, SheetContent, SheetTrigger } from "../components/ui/sheet"
 import { Pagination } from "../components/ui/pagination"
 import { CardSkeleton, LogSkeleton } from "../components/ui/skeleton"
 import NotificationBell from "../components/NotificationBell"
+import { ActiveIncidentsBanner, IncidentHistory } from "../components/IncidentTimeline"
+import { useCategories } from "../hooks/useCategories"
 import {
-  Globe, LogOut, Menu, Search, Plus, Home, RefreshCw, Activity, AlertTriangle, CheckCircle, XCircle, History, Settings, ShieldAlert, Download, Moon, Sun, CheckSquare, Square, FileSpreadsheet, Share2, Key, Crown,
+  Globe, LogOut, Menu, Search, Home, RefreshCw, Activity, AlertTriangle, CheckCircle, XCircle, History, Settings, ShieldAlert, Download, Moon, Sun, CheckSquare, Square, Share2, Key, AlertOctagon, Tags, FileText,
 } from "lucide-react"
 
-const categorias = ["Cober", "Bristol", "Medicals", "Centros Médicos"]
 const statusTabs = [
   { key: "todas", label: "Todas" },
   { key: "ACTIVO", label: "Activas" },
@@ -40,61 +45,83 @@ const uptimeFilters = [
   { key: "DOWN", label: "Caídas" },
   { key: "sin_verificar", label: "Sin verificar" },
 ]
-const categoriaColors = {
-  Cober: "bg-purple-600",
-  Bristol: "bg-blue-600",
-  Medicals: "bg-emerald-600",
-  "Centros Médicos": "bg-amber-600",
-}
-
-const ITEMS_PER_PAGE = 12
 
 export default function Dashboard() {
   const { user, logout } = useAuth()
   const { addNotification } = useNotifications()
   const { dark, toggle: toggleTheme } = useTheme()
-  const [landings, setLandings] = useState([])
-  const [filteredLandings, setFilteredLandings] = useState([])
   const [search, setSearch] = useState("")
   const [activeCategoria, setActiveCategoria] = useState(null)
   const [activeStatus, setActiveStatus] = useState("todas")
   const [activeUptime, setActiveUptime] = useState("todas")
   const [activeTag, setActiveTag] = useState(null)
-  const [editingLanding, setEditingLanding] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [sidebarExpanded, setSidebarExpanded] = useState(false)
-  const [modalKey, setModalKey] = useState(0)
-  const [checkingAll, setCheckingAll] = useState(false)
-  const [logsModal, setLogsModal] = useState(null)
-  const [logs, setLogs] = useState([])
-  const [logsLoading, setLogsLoading] = useState(false)
-  const [auditModal, setAuditModal] = useState(false)
-  const [auditLogs, setAuditLogs] = useState([])
-  const [auditLoading, setAuditLoading] = useState(false)
-  const [settingsOpen, setSettingsOpen] = useState(false)
-  const [notifyEmail, setNotifyEmail] = useState(true)
-  const [sendSslAlerts, setSendSslAlerts] = useState(true)
-  const [sslModal, setSslModal] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
   const [selectedIds, setSelectedIds] = useState(new Set())
-  const [profileOpen, setProfileOpen] = useState(false)
-  const [bulkChecking, setBulkChecking] = useState(false)
-  const [statusPageOpen, setStatusPageOpen] = useState(false)
-  const [apiKeysOpen, setApiKeysOpen] = useState(false)
-  const [sheetOpen, setSheetOpen] = useState(false)
+  const [sidebarExpanded, setSidebarExpanded] = useState(false)
+  const [modalKey, setModalKey] = useState(0)
+  const [notifyEmail, setNotifyEmail] = useState(true)
+  const [sendSslAlerts, setSendSslAlerts] = useState(true)
+  const [incidentPage, setIncidentPage] = useState(1)
+  const notifiedDown = useRef(new Set())
+  const notifiedSsl = useRef(new Set())
+  const { data: activeIncidents = [] } = useActiveIncidents()
+  const { data: categories = [] } = useCategories()
+  const firstLoadDone = useRef(false)
 
+  const {
+    landings, filteredLandings, paginatedLandings, totalPages,
+    loading, stats, tags, refetch,
+    createLanding, updateLanding, deleteLanding,
+    checkAllLandings, bulkCheckLandings, bulkDeleteLandings,
+    isCheckingAll, isBulkChecking,
+  } = useLandings({ search, activeCategoria, activeStatus, activeUptime, activeTag, currentPage })
 
+  const modals = useModals()
+
+  useEffect(() => {
+    api.getUserSettings()
+      .then((u) => { setNotifyEmail(u.notifyEmail); setSendSslAlerts(u.sendSslAlerts) })
+      .catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    if (!firstLoadDone.current && !loading) {
+      firstLoadDone.current = true
+    }
+    if (!loading && firstLoadDone.current) {
+      const downLandings = landings.filter((l) => l.ultimoStatus === "DOWN")
+      const currentDown = new Set(downLandings.map((l) => l.id))
+      notifiedDown.current.forEach((id) => { if (!currentDown.has(id)) notifiedDown.current.delete(id) })
+      downLandings.forEach((l) => {
+        if (!notifiedDown.current.has(l.id)) {
+          notifiedDown.current.add(l.id)
+          addNotification({ title: `${l.nombre} está CAÍDA`, description: `${l.url} — Código: ${l.ultimoCodigo || "N/A"}`, type: "error" })
+        }
+      })
+      const sslExpiring = landings.filter((l) => l.ultimoSslDias !== null && l.ultimoSslDias < 14 && l.ultimoSslDias > 0)
+      const currentSsl = new Set(sslExpiring.map((l) => l.id))
+      notifiedSsl.current.forEach((id) => { if (!currentSsl.has(id)) notifiedSsl.current.delete(id) })
+      sslExpiring.forEach((l) => {
+        if (!notifiedSsl.current.has(l.id)) {
+          notifiedSsl.current.add(l.id)
+          addNotification({ title: `SSL próximo a vencer: ${l.nombre}`, description: `${l.ultimoSslDias} días restantes`, type: "warning" })
+        }
+      })
+    }
+  }, [landings, loading, addNotification])
 
   const sidebarLinks = [
     { label: "Dashboard", icon: Home, action: () => { setActiveCategoria(null); setActiveStatus("todas"); setActiveUptime("todas"); setActiveTag(null); setSearch(""); setCurrentPage(1); } },
-    { label: "Landings", icon: Globe, action: () => document.querySelector(".flex-1.overflow-y-auto")?.scrollTo({ top: 0, behavior: "smooth" }) },
-    { label: "SSL", icon: ShieldAlert, action: () => setSslModal(true) },
-    { label: "Status Page", icon: Share2, action: () => setStatusPageOpen(true) },
-    { label: "API Keys", icon: Key, action: () => setApiKeysOpen(true) },
-
-
-    { label: "Auditoría", icon: History, action: () => { api.getAuditLogs().then(setAuditLogs).catch(() => {}).finally(() => setAuditLoading(false)); setAuditModal(true); } },
-    { label: "Configuración", icon: Settings, action: () => setSettingsOpen(true) },
+    { label: "Branch Comercial", icon: Globe, action: () => document.querySelector(".flex-1.overflow-y-auto")?.scrollTo({ top: 0, behavior: "smooth" }) },
+    { label: "SSL", icon: ShieldAlert, action: () => modals.setSslModal(true) },
+    { label: "Status Page", icon: Share2, action: () => modals.setStatusPageOpen(true) },
+    { label: "API Keys", icon: Key, action: () => modals.setApiKeysOpen(true) },
+    { label: "Categorías", icon: Tags, action: () => modals.setCategoriesOpen(true) },
+    { label: "Tipos de Template", icon: FileText, action: () => modals.setTemplateTypesOpen(true) },
+    { label: "Incidentes", icon: AlertOctagon, count: activeIncidents.length, action: () => modals.setIncidentsOpen(true) },
+    ...(user?.role === "admin" ? [{ label: "Usuarios", icon: ShieldAlert, action: () => modals.setUsersOpen(true) }] : []),
+    { label: "Auditoría", icon: History, action: () => modals.openAudit() },
+    { label: "Configuración", icon: Settings, action: () => modals.setSettingsOpen(true) },
   ]
 
   const toggleSelect = (id) => {
@@ -106,171 +133,75 @@ export default function Dashboard() {
   }
 
   const toggleSelectAll = () => {
-    if (selectedIds.size === filteredLandings.length) {
+    if (selectedIds.size === paginatedLandings.length) {
       setSelectedIds(new Set())
     } else {
-      setSelectedIds(new Set(filteredLandings.map((l) => l.id)))
+      setSelectedIds(new Set(paginatedLandings.map((l) => l.id)))
     }
   }
 
   const handleBulkCheck = async () => {
-    if (selectedIds.size === 0) { toast.error("Seleccioná al menos una landing"); return }
-    setBulkChecking(true)
+    if (selectedIds.size === 0) { toast.error("Seleccioná al menos una branch comercial"); return }
     try {
-      await api.bulkCheckLandings([...selectedIds])
-      toast.success(`${selectedIds.size} landings verificadas`)
-      await fetchLandings()
+      await bulkCheckLandings([...selectedIds])
+      toast.success(`${selectedIds.size} branches verificadas`)
       setSelectedIds(new Set())
-    } catch { toast.error("Error en verificación masiva") } finally { setBulkChecking(false) }
+    } catch { toast.error("Error en verificación masiva") }
   }
 
   const handleBulkDelete = async () => {
     if (selectedIds.size === 0) return
-    if (!confirm(`¿Eliminar ${selectedIds.size} landing(s)?`)) return
+    if (!confirm(`¿Eliminar ${selectedIds.size} branch(es) comercial(es)?`)) return
     try {
-      await api.bulkDeleteLandings([...selectedIds])
-      toast.success(`${selectedIds.size} landing(s) eliminadas`)
-      await fetchLandings()
+      await bulkDeleteLandings([...selectedIds])
+      toast.success(`${selectedIds.size} branch(es) eliminadas`)
       setSelectedIds(new Set())
     } catch { toast.error("Error al eliminar") }
   }
-
-  useEffect(() => {
-    api.getUserSettings()
-      .then((u) => { setNotifyEmail(u.notifyEmail); setSendSslAlerts(u.sendSslAlerts) })
-      .catch(() => {})
-  }, [])
 
   const handleSaveSettings = async () => {
     try {
       await api.updateUserSettings({ notifyEmail, sendSslAlerts })
       toast.success("Configuración guardada")
-      setSettingsOpen(false)
+      modals.setSettingsOpen(false)
     } catch {
       toast.error("Error al guardar configuración")
     }
   }
 
-  const fetchLandings = useCallback(async () => {
-    try {
-      const res = await api.getLandings(1, 100)
-      const data = res.data || res
-      setLandings(data)
-      const downLandings = data.filter((l) => l.ultimoStatus === "DOWN")
-      downLandings.forEach((l) => {
-        addNotification({ title: `${l.nombre} está CAÍDA`, description: `${l.url} — Código: ${l.ultimoCodigo || "N/A"}`, type: "error" })
-      })
-      const sslExpiring = data.filter((l) => l.ultimoSslDias !== null && l.ultimoSslDias < 14 && l.ultimoSslDias > 0)
-      sslExpiring.forEach((l) => {
-        addNotification({ title: `SSL próximo a vencer: ${l.nombre}`, description: `${l.ultimoSslDias} días restantes`, type: "warning" })
-      })
-    } catch (err) {
-      toast.error("Error al cargar landings")
-    } finally {
-      setLoading(false)
-    }
-  }, [addNotification])
-
-  useEffect(() => { fetchLandings() }, [fetchLandings])
-
-  usePolling(fetchLandings, 30000, [fetchLandings])
-
-  useEffect(() => {
-    let result = landings
-    if (activeCategoria) {
-      result = result.filter((l) => l.categoria === activeCategoria)
-    }
-    if (activeStatus !== "todas") {
-      result = result.filter((l) => l.estado === activeStatus)
-    }
-    if (activeUptime === "UP") {
-      result = result.filter((l) => l.ultimoStatus === "UP")
-    } else if (activeUptime === "DOWN") {
-      result = result.filter((l) => l.ultimoStatus === "DOWN")
-    } else if (activeUptime === "sin_verificar") {
-      result = result.filter((l) => !l.ultimoStatus)
-    }
-    if (activeTag) {
-      result = result.filter((l) => l.tags && l.tags.toLowerCase().includes(activeTag.toLowerCase()))
-    }
-    if (search) {
-      const q = search.toLowerCase()
-      result = result.filter((l) =>
-        l.nombre.toLowerCase().includes(q) ||
-        l.marca.toLowerCase().includes(q) ||
-        l.url.toLowerCase().includes(q)
-      )
-    }
-    setFilteredLandings(result)
-    setCurrentPage(1)
-  }, [landings, activeCategoria, activeStatus, activeUptime, search, activeTag])
-
-  const totalPages = Math.ceil(filteredLandings.length / ITEMS_PER_PAGE)
-  const paginatedLandings = filteredLandings.slice(
-    (currentPage - 1) * ITEMS_PER_PAGE,
-    currentPage * ITEMS_PER_PAGE
-  )
-
   const handleCreate = async (data) => {
-    const landing = await api.createLanding(data)
+    const landing = await createLanding(data)
     setModalKey((k) => k + 1)
-    await fetchLandings()
-    addNotification({ title: "Landing creada", description: `${landing.nombre} — ${landing.url}`, type: "success" })
-    toast.success("Landing creada exitosamente")
+    addNotification({ title: "Branch Comercial creada", description: `${landing.nombre} — ${landing.url}`, type: "success" })
+    toast.success("Branch Comercial creada exitosamente")
   }
 
   const handleEdit = async (data) => {
-    await api.updateLanding(editingLanding.id, data)
-    setEditingLanding(null)
-    await fetchLandings()
-    addNotification({ title: "Landing actualizada", description: `${data.nombre}`, type: "success" })
-    toast.success("Landing actualizada exitosamente")
+    await updateLanding({ id: modals.editingLanding.id, data })
+    modals.setEditingLanding(null)
+    addNotification({ title: "Branch Comercial actualizada", description: `${data.nombre}`, type: "success" })
+    toast.success("Branch Comercial actualizada exitosamente")
   }
 
   const handleDelete = async (id) => {
-    if (!confirm("¿Estás seguro de eliminar esta landing?")) return
-    await api.deleteLanding(id)
-    await fetchLandings()
-    addNotification({ title: "Landing eliminada", type: "info" })
-    toast.error("Landing eliminada")
+    if (!confirm("¿Estás seguro de eliminar esta branch comercial?")) return
+    await deleteLanding(id)
+    addNotification({ title: "Branch Comercial eliminada", type: "info" })
+    toast.error("Branch Comercial eliminada")
   }
 
   const handleCheckAll = async () => {
-    setCheckingAll(true)
     try {
-      const res = await api.checkAllLandings()
-      const downCount = res.results.filter((r) => !r.isUp).length
+      const res = await checkAllLandings()
+      const downCount = res?.results?.filter((r) => !r.isUp).length || 0
       if (downCount > 0) {
-        addNotification({ title: `${downCount} landing(s) caída(s)`, description: "Se detectaron landings con problemas", type: "error" })
+        addNotification({ title: `${downCount} branch(es) caída(s)`, description: "Se detectaron branches con problemas", type: "error" })
       }
-      addNotification({ title: "Verificación completa", description: `${res.checked} landings verificadas`, type: "success" })
-      toast.success(`${res.checked} landings verificadas`)
-      await fetchLandings()
+      addNotification({ title: "Verificación completa", description: `${res?.checked || 0} branches verificadas`, type: "success" })
+      toast.success(`${res?.checked || 0} branches verificadas`)
     } catch {
       toast.error("Error al verificar todas")
-    } finally {
-      setCheckingAll(false)
     }
-  }
-
-  const handleViewLogs = async (landing) => {
-    setLogsModal(landing)
-    setLogsLoading(true)
-    try {
-      const data = await api.getLandingLogs(landing.id)
-      setLogs(data)
-    } catch {
-      setLogs([])
-    } finally {
-      setLogsLoading(false)
-    }
-  }
-
-  const stats = {
-    total: landings.length,
-    up: landings.filter((l) => l.ultimoStatus === "UP").length,
-    down: landings.filter((l) => l.ultimoStatus === "DOWN").length,
-    sinVerificar: landings.filter((l) => !l.ultimoStatus).length,
   }
 
   const SidebarContent = ({ mobile, closeSheet }) => {
@@ -294,6 +225,11 @@ export default function Dashboard() {
           >
             <link.icon className="w-5 h-5 shrink-0" />
             {(sidebarExpanded || mobile) && <span>{link.label}</span>}
+            {(sidebarExpanded || mobile) && link.count > 0 && (
+              <span className="ml-auto text-xs font-bold bg-destructive text-destructive-foreground px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
+                {link.count > 9 ? "9+" : link.count}
+              </span>
+            )}
           </button>
         ))}
         {(sidebarExpanded || mobile) && user?.role === "admin" && (
@@ -345,14 +281,14 @@ export default function Dashboard() {
 
       {/* Mobile header */}
       <div className="flex md:hidden items-center gap-2 p-3 border-b bg-background fixed top-0 left-0 right-0 z-30">
-        <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+        <Sheet open={modals.sheetOpen} onOpenChange={modals.setSheetOpen}>
           <SheetTrigger asChild>
             <Button variant="ghost" size="icon">
               <Menu className="w-5 h-5" />
             </Button>
           </SheetTrigger>
           <SheetContent side="left" className="w-64 p-0">
-            <SidebarContent mobile closeSheet={() => setSheetOpen(false)} />
+            <SidebarContent mobile closeSheet={() => modals.setSheetOpen(false)} />
           </SheetContent>
         </Sheet>
       </div>
@@ -370,11 +306,11 @@ export default function Dashboard() {
             />
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={handleCheckAll} disabled={checkingAll}>
-              <RefreshCw className={`w-4 h-4 ${checkingAll ? "animate-spin" : ""}`} />
+            <Button variant="outline" size="sm" onClick={handleCheckAll} disabled={isCheckingAll}>
+              <RefreshCw className={`w-4 h-4 ${isCheckingAll ? "animate-spin" : ""}`} />
               Verificar todas
             </Button>
-            <Button variant="outline" size="sm" onClick={() => api.exportCSV().then(blob => { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `landings-${new Date().toISOString().slice(0,10)}.csv`; a.click() }).catch(() => toast.error("Error al exportar"))}>
+            <Button variant="outline" size="sm" onClick={() => api.exportCSV().then(blob => { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `branches-${new Date().toISOString().slice(0,10)}.csv`; a.click() }).catch(() => toast.error("Error al exportar"))}>
               <Download className="w-4 h-4" />
               CSV
             </Button>
@@ -382,11 +318,13 @@ export default function Dashboard() {
             <Button variant="ghost" size="icon" onClick={toggleTheme} title={dark ? "Modo claro" : "Modo oscuro"}>
               {dark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
             </Button>
-            <LandingFormModal key={modalKey + "-create"} onSubmit={handleCreate}>
-              Nueva Landing
-            </LandingFormModal>
+            <BranchFormModal key={modalKey + "-create"} onSubmit={handleCreate}>
+              Nueva Branch Comercial
+            </BranchFormModal>
           </div>
         </header>
+
+        <ActiveIncidentsBanner />
 
         {/* Stats row */}
         <div className="flex gap-3 px-3 sm:px-4 md:px-6 pt-3">
@@ -420,24 +358,24 @@ export default function Dashboard() {
 
         {/* Category filter */}
         <div className="flex gap-1.5 px-3 sm:px-4 md:px-6 pt-3 overflow-x-auto scrollbar-none">
-          {categorias.map((cat) => (
+          {categories.map((cat) => (
             <button
-              key={cat}
-              onClick={() => setActiveCategoria(activeCategoria === cat ? null : cat)}
+              key={cat.name}
+              onClick={() => setActiveCategoria(activeCategoria === cat.name ? null : cat.name)}
               className={`flex items-center gap-1.5 px-3 py-1.5 text-xs sm:text-sm rounded-lg font-medium transition-colors whitespace-nowrap ${
-                activeCategoria === cat
-                  ? "text-white shadow-md"
+                activeCategoria === cat.name
+                  ? "bg-gradient-to-br text-white shadow-md"
                   : "bg-muted text-muted-foreground hover:bg-accent"
-              }`}
-              style={activeCategoria === cat ? { backgroundColor: categoriaColors[cat] } : {}}
+              } ${activeCategoria === cat.name ? cat.color : ""}`}
             >
-              {cat}
+              <span className={`w-2 h-2 rounded-full bg-gradient-to-br ${cat.color}`} />
+              {cat.name}
             </button>
           ))}
         </div>
 
         {/* Tags filter */}
-        {landings.some((l) => l.tags) && (
+        {tags.length > 0 && (
           <div className="flex gap-1.5 px-3 sm:px-4 md:px-6 pt-2 overflow-x-auto scrollbar-none">
             <button
               onClick={() => setActiveTag(null)}
@@ -447,19 +385,17 @@ export default function Dashboard() {
             >
               Todos
             </button>
-            {[...new Set(landings.flatMap((l) => (l.tags ? l.tags.split(",").map((t) => t.trim()) : [])))]
-              .sort()
-              .map((tag) => (
-                <button
-                  key={tag}
-                  onClick={() => setActiveTag(activeTag === tag ? null : tag)}
-                  className={`px-2.5 py-1 text-xs rounded-md font-medium whitespace-nowrap transition-colors ${
-                    activeTag === tag ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-accent"
-                  }`}
-                >
-                  {tag}
-                </button>
-              ))}
+            {tags.map((tag) => (
+              <button
+                key={tag}
+                onClick={() => setActiveTag(activeTag === tag ? null : tag)}
+                className={`px-2.5 py-1 text-xs rounded-md font-medium whitespace-nowrap transition-colors ${
+                  activeTag === tag ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-accent"
+                }`}
+              >
+                {tag}
+              </button>
+            ))}
           </div>
         )}
 
@@ -499,16 +435,16 @@ export default function Dashboard() {
           ) : filteredLandings.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
               <Globe className="w-16 h-16 mb-4 opacity-30" />
-              <p className="text-lg font-medium">No hay landings</p>
-              <p className="text-sm mt-1">Agregá tu primera landing para empezar</p>
+              <p className="text-lg font-medium">No hay branches comerciales</p>
+              <p className="text-sm mt-1">Agregá tu primer branch comercial para empezar</p>
             </div>
           ) : (
             <>
               {selectedIds.size > 0 && (
                 <div className="flex items-center gap-2 mb-3 p-2 bg-muted rounded-lg text-sm">
                   <span className="font-medium">{selectedIds.size} seleccionada(s)</span>
-                  <Button variant="outline" size="sm" onClick={handleBulkCheck} disabled={bulkChecking}>
-                    <RefreshCw className={`w-3 h-3 ${bulkChecking ? "animate-spin" : ""}`} />
+                  <Button variant="outline" size="sm" onClick={handleBulkCheck} disabled={isBulkChecking}>
+                    <RefreshCw className={`w-3 h-3 ${isBulkChecking ? "animate-spin" : ""}`} />
                     Verificar
                   </Button>
                   <Button variant="destructive" size="sm" onClick={handleBulkDelete}>Eliminar</Button>
@@ -530,15 +466,15 @@ export default function Dashboard() {
                     >
                       {selectedIds.has(landing.id) ? <CheckSquare className="w-4 h-4 text-primary" /> : <Square className="w-4 h-4 text-muted-foreground" />}
                     </button>
-                    <LandingCard
+                    <BranchCard
                       landing={landing}
-                      onEdit={setEditingLanding}
+                      onEdit={modals.setEditingLanding}
                       onDelete={handleDelete}
-                      onCheck={fetchLandings}
+                      onCheck={refetch}
                     />
                     <div className="mt-1 text-center">
                       <button
-                        onClick={() => handleViewLogs(landing)}
+                        onClick={() => modals.handleViewLogs(landing)}
                         className="text-xs text-muted-foreground hover:text-primary transition-colors"
                       >
                         Ver historial de checks
@@ -554,20 +490,20 @@ export default function Dashboard() {
       </div>
 
       {/* Logs history modal */}
-      {logsModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-3 sm:p-4" onClick={() => setLogsModal(null)}>
+      {modals.logsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-3 sm:p-4" onClick={() => modals.setLogsModal(null)}>
           <div className="bg-card rounded-xl p-5 sm:p-6 w-full max-w-lg max-h-[80vh] overflow-y-auto shadow-2xl border" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-lg font-bold mb-1">Historial de checks</h2>
-            <p className="text-sm text-muted-foreground mb-4">{logsModal.nombre} — {logsModal.url}</p>
-            {logsLoading ? (
+            <p className="text-sm text-muted-foreground mb-4">{modals.logsModal.nombre} — {modals.logsModal.url}</p>
+            {modals.logsLoading ? (
               <LogSkeleton />
-            ) : logs.length === 0 ? (
+            ) : modals.logs.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-8">Sin verificaciones aún</p>
             ) : (
               <>
-              <UptimeChart logs={logs} />
+              <UptimeChart logs={modals.logs} />
               <div className="space-y-2">
-                {logs.map((log) => (
+                {modals.logs.map((log) => (
                   <div key={log.id} className="flex items-center gap-3 text-xs p-2 rounded-lg bg-muted/50">
                     <span className={`w-2 h-2 rounded-full shrink-0 ${log.isUp ? "bg-green-500" : "bg-red-500"}`} />
                     <span className="font-medium">{log.isUp ? `OK ${log.statusCode || ""}` : "DOWN"}</span>
@@ -582,20 +518,20 @@ export default function Dashboard() {
               </>
             )}
             <div className="flex justify-end mt-4">
-              <Button variant="outline" onClick={() => setLogsModal(null)}>Cerrar</Button>
+              <Button variant="outline" onClick={() => modals.setLogsModal(null)}>Cerrar</Button>
             </div>
           </div>
         </div>
       )}
 
       {/* SSL Dashboard modal */}
-      {sslModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-3 sm:p-4" onClick={() => setSslModal(false)}>
+      {modals.sslModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-3 sm:p-4" onClick={() => modals.setSslModal(false)}>
           <div className="bg-card rounded-xl p-5 sm:p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto shadow-2xl border" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-lg font-bold mb-1">Estado SSL</h2>
-            <p className="text-sm text-muted-foreground mb-4">Certificados SSL de todas las landings</p>
+            <p className="text-sm text-muted-foreground mb-4">Certificados SSL de todas las branches</p>
             {landings.filter((l) => l.ultimoSslDias !== null).length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-8">Sin datos SSL aún. Verificá alguna landing primero.</p>
+              <p className="text-sm text-muted-foreground text-center py-8">Sin datos SSL aún. Verificá alguna branch primero.</p>
             ) : (
               <div className="space-y-2">
                 {[...landings]
@@ -627,15 +563,15 @@ export default function Dashboard() {
               </div>
             )}
             <div className="flex justify-end mt-4">
-              <Button variant="outline" onClick={() => setSslModal(false)}>Cerrar</Button>
+              <Button variant="outline" onClick={() => modals.setSslModal(false)}>Cerrar</Button>
             </div>
           </div>
         </div>
       )}
 
       {/* Settings modal */}
-      {settingsOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-3 sm:p-4" onClick={() => setSettingsOpen(false)}>
+      {modals.settingsOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-3 sm:p-4" onClick={() => modals.setSettingsOpen(false)}>
           <div className="bg-card rounded-xl p-5 sm:p-6 w-full max-w-lg max-h-[85vh] overflow-y-auto shadow-2xl border" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-lg font-bold mb-4">Configuración</h2>
 
@@ -649,7 +585,7 @@ export default function Dashboard() {
                 <input type="checkbox" checked={notifyEmail} onChange={(e) => setNotifyEmail(e.target.checked)} className="w-4 h-4" />
                 <div>
                   <p className="text-sm font-medium">Alertas por email</p>
-                  <p className="text-xs text-muted-foreground">Recibir correo cuando una landing esté caída</p>
+                  <p className="text-xs text-muted-foreground">Recibir correo cuando una branch esté caída</p>
                 </div>
               </label>
               <label className="flex items-center gap-3 cursor-pointer">
@@ -669,24 +605,24 @@ export default function Dashboard() {
             </div>
 
             <div className="flex justify-end mt-6 pt-4 border-t">
-              <Button variant="outline" onClick={() => setSettingsOpen(false)}>Cerrar</Button>
+              <Button variant="outline" onClick={() => modals.setSettingsOpen(false)}>Cerrar</Button>
             </div>
           </div>
         </div>
       )}
 
       {/* Audit log modal */}
-      {auditModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-3 sm:p-4" onClick={() => setAuditModal(false)}>
+      {modals.auditModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-3 sm:p-4" onClick={() => modals.setAuditModal(false)}>
           <div className="bg-card rounded-xl p-5 sm:p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto shadow-2xl border" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-lg font-bold mb-4">Historial de cambios</h2>
-            {auditLoading ? (
+            {modals.auditLoading ? (
               <LogSkeleton />
-            ) : auditLogs.length === 0 ? (
+            ) : modals.auditLogs.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-8">Sin cambios registrados aún</p>
             ) : (
               <div className="space-y-2">
-                {auditLogs.map((log) => (
+                {modals.auditLogs.map((log) => (
                   <div key={log.id} className="flex items-center gap-3 text-xs p-2 rounded-lg bg-muted/50">
                     <span className={`w-2 h-2 rounded-full shrink-0 ${
                       log.action === "CREATE" ? "bg-green-500" :
@@ -703,186 +639,103 @@ export default function Dashboard() {
               </div>
             )}
             <div className="flex justify-end mt-4">
-              <Button variant="outline" onClick={() => setAuditModal(false)}>Cerrar</Button>
+              <Button variant="outline" onClick={() => modals.setAuditModal(false)}>Cerrar</Button>
             </div>
           </div>
         </div>
       )}
 
       {/* Edit modal */}
-      {editingLanding && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-3 sm:p-4">
-          <div className="bg-card rounded-xl p-5 sm:p-6 w-full max-w-[800px] max-h-[90vh] overflow-y-auto shadow-2xl border" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-lg sm:text-xl font-bold mb-5">Editar Landing</h2>
-            <form
-              onSubmit={async (e) => {
-                e.preventDefault()
-                const formData = new FormData(e.target)
-                const data = Object.fromEntries(formData)
-                await handleEdit(data)
-              }}
-              className="space-y-4"
-            >
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div className="flex flex-col space-y-2">
-                    <label className="text-sm font-medium">Nombre</label>
-                  <input
-                    name="nombre" defaultValue={editingLanding.nombre} required
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
-                  />
-                </div>
-                <div className="flex flex-col space-y-2">
-                  <label className="text-sm font-medium">Marca</label>
-                  <input
-                    name="marca" defaultValue={editingLanding.marca} required
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
-                  />
-                </div>
-                <div className="flex flex-col space-y-2">
-                  <label className="text-sm font-medium">Cliente</label>
-                  <input
-                    name="cliente" defaultValue={editingLanding.cliente || ""}
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
-                    placeholder="Nombre del cliente"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="flex flex-col space-y-2">
-                  <label className="text-sm font-medium">URL</label>
-                  <input
-                    name="url" defaultValue={editingLanding.url} required
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
-                  />
-                </div>
-                <div className="flex flex-col space-y-2">
-                  <label className="text-sm font-medium">Categoría</label>
-                  <select
-                    name="categoria" defaultValue={editingLanding.categoria || "Cober"}
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
-                  >
-                    {categorias.map((c) => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                </div>
-                <div className="flex flex-col space-y-2">
-                  <label className="text-sm font-medium">Estado</label>
-                  <select
-                    name="estado" defaultValue={editingLanding.estado}
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
-                  >
-                    <option value="ACTIVO">Activo</option>
-                    <option value="INACTIVO">Inactivo</option>
-                    <option value="EN_DESARROLLO">En desarrollo</option>
-                  </select>
-                </div>
-              </div>
-              <div className="flex flex-col space-y-2">
-                <label className="text-sm font-medium">URL de la imagen de portada</label>
-                <input
-                  name="imagenUrl" defaultValue={editingLanding.imagenUrl || ""}
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
-                />
-              </div>
-              <div className="border-t pt-4">
-                <h3 className="text-sm font-semibold text-muted-foreground mb-3">Formulario (Google Sheet)</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="flex flex-col space-y-2">
-                    <label className="text-sm font-medium">URL del Sheet</label>
-                    <input
-                      name="sheetUrl" defaultValue={editingLanding.sheetUrl || ""}
-                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
-                      placeholder="https://docs.google.com/spreadsheets/..."
-                    />
-                  </div>
-                  <div className="flex flex-col space-y-2">
-                    <label className="text-sm font-medium">Estado del formulario</label>
-                    <select
-                      name="formStatus" defaultValue={editingLanding.formStatus || "PENDIENTE"}
-                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
-                    >
-                      <option value="PENDIENTE">Pendiente</option>
-                      <option value="OK">Verificado</option>
-                      <option value="ERROR">Con error</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-              <div className="border-t pt-4">
-                <h3 className="text-sm font-semibold text-muted-foreground mb-3">FTP (opcional)</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {["ftpHost", "ftpPath", "ftpUser", "ftpPass"].map((field) => (
-                    <div key={field} className="flex flex-col space-y-2">
-                      <label className="text-sm font-medium">
-                        {field === "ftpHost" ? "Host" : field === "ftpPath" ? "Ruta" : field === "ftpUser" ? "Usuario" : "Contraseña"}
-                      </label>
-                      <input
-                        name={field}
-                        type={field === "ftpPass" ? "password" : "text"}
-                        defaultValue={editingLanding[field] || ""}
-                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="flex flex-col space-y-2">
-                <label className="text-sm font-medium">Tags</label>
-                <input
-                  name="tags" defaultValue={editingLanding.tags || ""}
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
-                  placeholder="premium, redesign, urgencia"
-                />
-              </div>
-              <div className="flex flex-col space-y-2">
-                <Label htmlFor="tecnologias">Tecnologías</Label>
-                <input
-                  name="tecnologias" defaultValue={editingLanding.tecnologias || ""}
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
-                />
-              </div>
-              <div className="flex flex-col space-y-2">
-                <label className="text-sm font-medium">Notas</label>
-                <textarea
-                  name="notas" rows={3} defaultValue={editingLanding.notas || ""}
-                  className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm"
-                />
-              </div>
-              <div className="flex justify-end gap-3 pt-4 border-t">
-                <Button type="button" variant="outline" onClick={() => setEditingLanding(null)}>
-                  Cancelar
-                </Button>
-                <Button type="submit">Guardar cambios</Button>
-              </div>
-            </form>
+      {modals.editingLanding && (
+        <BranchFormModal
+          key={modalKey + "-edit"}
+          initialData={modals.editingLanding}
+          onSubmit={handleEdit}
+          onSuccess={() => modals.setEditingLanding(null)}
+          onClose={() => modals.setEditingLanding(null)}
+          defaultOpen={true}
+        >
+          <span />
+        </BranchFormModal>
+      )}
+
+      {/* Status Page modal */}
+      {modals.statusPageOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-3 sm:p-4" onClick={() => modals.setStatusPageOpen(false)}>
+          <div className="bg-card rounded-xl p-5 sm:p-6 w-full max-w-lg max-h-[85vh] overflow-y-auto shadow-2xl border" onClick={(e) => e.stopPropagation()}>
+            <StatusPageSettings />
+            <div className="flex justify-end mt-6 pt-4 border-t">
+              <Button variant="outline" onClick={() => modals.setStatusPageOpen(false)}>Cerrar</Button>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Status Page modal */}
-      {statusPageOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-3 sm:p-4" onClick={() => setStatusPageOpen(false)}>
-          <div className="bg-card rounded-xl p-5 sm:p-6 w-full max-w-lg max-h-[85vh] overflow-y-auto shadow-2xl border" onClick={(e) => e.stopPropagation()}>
-            <StatusPageSettings />
+      {/* Incidents modal */}
+      {modals.incidentsOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-3 sm:p-4" onClick={() => modals.setIncidentsOpen(false)}>
+          <div className="bg-card rounded-xl p-5 sm:p-6 w-full max-w-2xl max-h-[85vh] overflow-y-auto shadow-2xl border" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold">Incidentes</h2>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <AlertTriangle className="w-4 h-4 text-destructive" />
+                {activeIncidents.length} activo(s)
+              </div>
+            </div>
+            <IncidentHistory page={incidentPage} onPageChange={setIncidentPage} />
             <div className="flex justify-end mt-6 pt-4 border-t">
-              <Button variant="outline" onClick={() => setStatusPageOpen(false)}>Cerrar</Button>
+              <Button variant="outline" onClick={() => modals.setIncidentsOpen(false)}>Cerrar</Button>
             </div>
           </div>
         </div>
       )}
 
       {/* API Keys modal */}
-      {apiKeysOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-3 sm:p-4" onClick={() => setApiKeysOpen(false)}>
+      {modals.apiKeysOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-3 sm:p-4" onClick={() => modals.setApiKeysOpen(false)}>
           <div className="bg-card rounded-xl p-5 sm:p-6 w-full max-w-lg max-h-[85vh] overflow-y-auto shadow-2xl border" onClick={(e) => e.stopPropagation()}>
             <ApiKeyManager />
             <div className="flex justify-end mt-6 pt-4 border-t">
-              <Button variant="outline" onClick={() => setApiKeysOpen(false)}>Cerrar</Button>
+              <Button variant="outline" onClick={() => modals.setApiKeysOpen(false)}>Cerrar</Button>
             </div>
           </div>
         </div>
       )}
 
+      {/* Categories modal */}
+      {modals.categoriesOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-3 sm:p-4" onClick={() => modals.setCategoriesOpen(false)}>
+          <div className="bg-card rounded-xl p-5 sm:p-6 w-full max-w-lg max-h-[85vh] overflow-y-auto shadow-2xl border" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-semibold mb-4">Categorías</h2>
+            <CategoryManager />
+            <div className="flex justify-end mt-6 pt-4 border-t">
+              <Button variant="outline" onClick={() => modals.setCategoriesOpen(false)}>Cerrar</Button>
+            </div>
+          </div>
+        </div>
+      )}
 
+      {/* Template Types modal */}
+      {modals.templateTypesOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-3 sm:p-4" onClick={() => modals.setTemplateTypesOpen(false)}>
+          <div className="bg-card rounded-xl p-5 sm:p-6 w-full max-w-2xl max-h-[85vh] overflow-y-auto shadow-2xl border" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-semibold mb-4">Tipos de Template</h2>
+            <TemplateTypeManager />
+            <div className="flex justify-end mt-6 pt-4 border-t">
+              <Button variant="outline" onClick={() => modals.setTemplateTypesOpen(false)}>Cerrar</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Users modal */}
+      {modals.usersOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-3 sm:p-4" onClick={() => modals.setUsersOpen(false)}>
+          <div className="bg-card rounded-xl p-5 sm:p-6 w-full max-w-3xl max-h-[85vh] overflow-y-auto shadow-2xl border" onClick={(e) => e.stopPropagation()}>
+            <UserManager onClose={() => modals.setUsersOpen(false)} />
+          </div>
+        </div>
+      )}
 
     </div>
   )

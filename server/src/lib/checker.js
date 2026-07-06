@@ -47,24 +47,33 @@ function checkUrl(url) {
 
 function checkSsl(hostname) {
   return new Promise((resolve) => {
-    const socket = tls.connect(443, hostname, { servername: hostname, rejectUnauthorized: false }, () => {
-      const cert = socket.getPeerCertificate();
-      socket.end();
-      if (!cert || !cert.valid_to) {
-        resolve({ valid: false, expiresAt: null, daysRemaining: 0, error: 'No certificate' });
-        return;
-      }
-      const expires = new Date(cert.valid_to);
-      const days = Math.floor((expires - new Date()) / (1000 * 60 * 60 * 24));
-      resolve({ valid: days > 0, expiresAt: expires.toISOString(), daysRemaining: days, error: null });
-    });
-    socket.on('error', (err) => {
-      resolve({ valid: false, expiresAt: null, daysRemaining: 0, error: err.message });
-    });
-    socket.setTimeout(10000, () => {
-      socket.destroy();
-      resolve({ valid: false, expiresAt: null, daysRemaining: 0, error: 'SSL timeout' });
-    });
+    if (!hostname || typeof hostname !== 'string') {
+      return resolve({ valid: false, expiresAt: null, daysRemaining: 0, error: 'Hostname inválido' });
+    }
+    let socket;
+    try {
+      socket = tls.connect(443, hostname, { servername: hostname, rejectUnauthorized: false }, () => {
+        const cert = socket.getPeerCertificate();
+        socket.end();
+        if (!cert || !cert.valid_to) {
+          resolve({ valid: false, expiresAt: null, daysRemaining: 0, error: 'No certificate' });
+          return;
+        }
+        const expires = new Date(cert.valid_to);
+        const days = Math.floor((expires - new Date()) / (1000 * 60 * 60 * 24));
+        resolve({ valid: days > 0, expiresAt: expires.toISOString(), daysRemaining: days, error: null });
+      });
+      socket.on('error', (err) => {
+        resolve({ valid: false, expiresAt: null, daysRemaining: 0, error: `SSL error: ${err.message}` });
+      });
+      socket.setTimeout(10000, () => {
+        socket.destroy();
+        resolve({ valid: false, expiresAt: null, daysRemaining: 0, error: 'SSL timeout' });
+      });
+    } catch (err) {
+      if (socket) try { socket.destroy(); } catch {}
+      resolve({ valid: false, expiresAt: null, daysRemaining: 0, error: `SSL connection error: ${err.message}` });
+    }
   });
 }
 

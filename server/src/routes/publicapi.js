@@ -1,10 +1,12 @@
 const express = require('express');
 const prisma = require('../lib/prisma');
 const { apiKeyMiddleware } = require('../middleware/auth');
+const { apiKeyLimiter } = require('../middleware/rateLimiter');
 const { logger } = require('../lib/logger');
 
 const router = express.Router();
 
+router.use(apiKeyLimiter);
 router.use(apiKeyMiddleware);
 
 router.get('/landings', async (req, res) => {

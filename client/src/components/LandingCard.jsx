@@ -4,6 +4,7 @@ import { ExternalLink, Pencil, Trash2, FileSpreadsheet, Activity, RefreshCw, Roc
 import { Badge } from "./ui/badge"
 import { Button } from "./ui/button"
 import { api } from "../lib/api"
+import { useCategories } from "../hooks/useCategories"
 
 const estadoColors = {
   ACTIVO: "bg-green-500",
@@ -15,13 +16,6 @@ const estadoLabels = {
   ACTIVO: "Activo",
   INACTIVO: "Inactivo",
   EN_DESARROLLO: "En desarrollo",
-}
-
-const categoriaGradients = {
-  Cober: "from-purple-600/80 to-pink-600/80",
-  Bristol: "from-blue-600/80 to-cyan-600/80",
-  Medicals: "from-emerald-600/80 to-teal-600/80",
-  "Centros Médicos": "from-amber-600/80 to-orange-600/80",
 }
 
 function timeAgo(date) {
@@ -38,6 +32,8 @@ function timeAgo(date) {
 
 export default function LandingCard({ landing, onEdit, onDelete, onCheck }) {
   const cardRef = useRef(null)
+  const { data: categories = [] } = useCategories()
+  const catColor = categories.find((c) => c.name === landing.categoria)?.color || "from-purple-600/80 to-pink-600/80"
   const [rotateX, setRotateX] = useState(0)
   const [rotateY, setRotateY] = useState(0)
   const [checking, setChecking] = useState(false)
@@ -140,7 +136,7 @@ export default function LandingCard({ landing, onEdit, onDelete, onCheck }) {
           <div className="w-full mb-3">
             <div className="flex items-center gap-3">
               <div
-                className={`w-10 h-10 rounded-full bg-gradient-to-br ${categoriaGradients[landing.categoria] || "from-purple-500 to-pink-500"} flex items-center justify-center text-white font-bold text-sm shrink-0`}
+                className={`w-10 h-10 rounded-full bg-gradient-to-br ${catColor} flex items-center justify-center text-white font-bold text-sm shrink-0`}
               >
                 {landing.marca?.charAt(0).toUpperCase() || "?"}
               </div>

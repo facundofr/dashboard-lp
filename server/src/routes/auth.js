@@ -3,7 +3,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const prisma = require('../lib/prisma');
-const { authMiddleware, adminMiddleware, apiKeyMiddleware, JWT_SECRET, generateTokens, REFRESH_EXPIRY_DAYS, PLAN_LIMITS } = require('../middleware/auth');
+const { authMiddleware, checkDisabled, adminMiddleware, apiKeyMiddleware, JWT_SECRET, generateTokens, REFRESH_EXPIRY_DAYS, PLAN_LIMITS } = require('../middleware/auth');
 const { authLimiter } = require('../middleware/rateLimiter');
 const { loginValidation, registerValidation } = require('../middleware/validator');
 const { sendPasswordReset } = require('../lib/mailer');
@@ -21,6 +21,7 @@ function buildUserResponse(user) {
     notifyEmail: user.notifyEmail,
     sendSslAlerts: user.sendSslAlerts,
     avatarUrl: user.avatarUrl,
+    disabled: user.disabled,
   };
 }
 
@@ -52,8 +53,8 @@ router.post('/register', authLimiter, registerValidation, async (req, res) => {
     if (exists) return res.status(400).json({ message: 'El email ya está registrado' });
     const hashed = await bcrypt.hash(password, 10);
     const user = await prisma.user.create({ data: { email, password: hashed, nombre, emailVerificationToken: crypto.randomBytes(32).toString('hex') } });
-    const { accessToken } = generateTokens(user.id, user.email);
-    res.json({ token: accessToken, user: buildUserResponse(user) });
+    const { accessToken, refreshToken } = generateTokens(user.id, user.email);
+    res.json({ token: accessToken, refreshToken, user: buildUserResponse(user) });
   } catch (err) {
     logger.error({ err }, 'Error en registro');
     res.status(500).json({ message: 'Error del servidor' });
@@ -65,10 +66,11 @@ router.post('/login', authLimiter, loginValidation, async (req, res) => {
     const { email, password } = req.body;
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) return res.status(401).json({ message: 'Credenciales inválidas' });
+    if (user.disabled) return res.status(403).json({ message: 'Cuenta deshabilitada. Contactá al administrador.', code: 'ACCOUNT_DISABLED' });
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) return res.status(401).json({ message: 'Credenciales inválidas' });
-    const { accessToken } = generateTokens(user.id, user.email);
-    res.json({ token: accessToken, user: buildUserResponse(user) });
+    const { accessToken, refreshToken } = generateTokens(user.id, user.email);
+    res.json({ token: accessToken, refreshToken, user: buildUserResponse(user) });
   } catch (err) {
     logger.error({ err }, 'Error en login');
     res.status(500).json({ message: 'Error del servidor' });
@@ -93,8 +95,8 @@ router.post('/oauth/google', async (req, res) => {
       provider: 'google',
       providerId: payload.sub,
     });
-    const { accessToken } = generateTokens(user.id, user.email);
-    res.json({ token: accessToken, user: buildUserResponse(user) });
+    const { accessToken, refreshToken } = generateTokens(user.id, user.email);
+    res.json({ token: accessToken, refreshToken, user: buildUserResponse(user) });
   } catch (err) {
     logger.error({ err }, 'Error en OAuth Google');
     res.status(500).json({ message: 'Error del servidor' });
@@ -128,7 +130,7 @@ router.post('/logout', async (req, res) => {
   res.json({ message: 'Sesión cerrada' });
 });
 
-router.get('/me', authMiddleware, async (req, res) => {
+router.get('/me', authMiddleware, checkDisabled, async (req, res) => {
   try {
     const user = await prisma.user.findUnique({ where: { id: req.userId } });
     if (!user) return res.status(404).json({ message: 'Usuario no encontrado' });
@@ -139,7 +141,7 @@ router.get('/me', authMiddleware, async (req, res) => {
   }
 });
 
-router.put('/settings', authMiddleware, async (req, res) => {
+router.put('/settings', authMiddleware, checkDisabled, async (req, res) => {
   try {
     const { notifyEmail, sendSslAlerts } = req.body;
     const user = await prisma.user.update({
@@ -193,9 +195,9 @@ router.post('/reset-password', authLimiter, async (req, res) => {
   }
 });
 
-router.get('/users', authMiddleware, adminMiddleware, async (req, res) => {
+router.get('/users', authMiddleware, checkDisabled, adminMiddleware, async (req, res) => {
   try {
-    const users = await prisma.user.findMany({ select: { id: true, email: true, nombre: true, role: true, plan: true, createdAt: true } });
+    const users = await prisma.user.findMany({ select: { id: true, email: true, nombre: true, role: true, plan: true, disabled: true, createdAt: true } });
     res.json(users);
   } catch (err) {
     logger.error({ err }, 'Error al listar usuarios');
@@ -203,7 +205,7 @@ router.get('/users', authMiddleware, adminMiddleware, async (req, res) => {
   }
 });
 
-router.put('/users/:id/role', authMiddleware, adminMiddleware, async (req, res) => {
+router.put('/users/:id/role', authMiddleware, checkDisabled, adminMiddleware, async (req, res) => {
   try {
     const { role } = req.body;
     if (!['user', 'admin'].includes(role)) return res.status(400).json({ message: 'Rol inválido' });
@@ -215,7 +217,33 @@ router.put('/users/:id/role', authMiddleware, adminMiddleware, async (req, res) 
   }
 });
 
-router.put('/profile', authMiddleware, async (req, res) => {
+router.put('/users/:id/toggle-status', authMiddleware, checkDisabled, adminMiddleware, async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: parseInt(req.params.id) } });
+    if (!user) return res.status(404).json({ message: 'Usuario no encontrado' });
+    if (user.id === req.userId) return res.status(400).json({ message: 'No podés deshabilitarte a vos mismo' });
+    const updated = await prisma.user.update({ where: { id: user.id }, data: { disabled: !user.disabled } });
+    res.json({ id: updated.id, email: updated.email, nombre: updated.nombre, disabled: updated.disabled });
+  } catch (err) {
+    logger.error({ err }, 'Error al cambiar estado del usuario');
+    res.status(500).json({ message: 'Error del servidor' });
+  }
+});
+
+router.delete('/users/:id', authMiddleware, checkDisabled, adminMiddleware, async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: parseInt(req.params.id) } });
+    if (!user) return res.status(404).json({ message: 'Usuario no encontrado' });
+    if (user.id === req.userId) return res.status(400).json({ message: 'No podés eliminarte a vos mismo' });
+    await prisma.user.delete({ where: { id: user.id } });
+    res.json({ message: 'Usuario eliminado', id: user.id, email: user.email });
+  } catch (err) {
+    logger.error({ err }, 'Error al eliminar usuario');
+    res.status(500).json({ message: 'Error del servidor' });
+  }
+});
+
+router.put('/profile', authMiddleware, checkDisabled, async (req, res) => {
   try {
     const { nombre, email, currentPassword, newPassword } = req.body;
     const user = await prisma.user.findUnique({ where: { id: req.userId } });
@@ -246,7 +274,7 @@ router.put('/profile', authMiddleware, async (req, res) => {
   }
 });
 
-router.get('/api-keys', authMiddleware, async (req, res) => {
+router.get('/api-keys', authMiddleware, checkDisabled, async (req, res) => {
   try {
     const keys = await prisma.apiKey.findMany({
       where: { userId: req.userId },
@@ -260,7 +288,7 @@ router.get('/api-keys', authMiddleware, async (req, res) => {
   }
 });
 
-router.post('/api-keys', authMiddleware, async (req, res) => {
+router.post('/api-keys', authMiddleware, checkDisabled, async (req, res) => {
   try {
     const { name, expiresInDays } = req.body;
     const rawKey = `gl_${crypto.randomBytes(24).toString('hex')}`;
@@ -282,7 +310,7 @@ router.post('/api-keys', authMiddleware, async (req, res) => {
   }
 });
 
-router.delete('/api-keys/:id', authMiddleware, async (req, res) => {
+router.delete('/api-keys/:id', authMiddleware, checkDisabled, async (req, res) => {
   try {
     const existing = await prisma.apiKey.findFirst({ where: { id: parseInt(req.params.id), userId: req.userId } });
     if (!existing) return res.status(404).json({ message: 'API key no encontrada' });
@@ -294,7 +322,7 @@ router.delete('/api-keys/:id', authMiddleware, async (req, res) => {
   }
 });
 
-router.put('/plan', authMiddleware, async (req, res) => {
+router.put('/plan', authMiddleware, checkDisabled, async (req, res) => {
   try {
     const { plan } = req.body;
     if (!PLAN_LIMITS[plan]) return res.status(400).json({ message: 'Plan inválido', available: Object.keys(PLAN_LIMITS) });
@@ -306,7 +334,7 @@ router.put('/plan', authMiddleware, async (req, res) => {
   }
 });
 
-router.get('/stats', authMiddleware, async (req, res) => {
+router.get('/stats', authMiddleware, checkDisabled, async (req, res) => {
   try {
     const [landingCount, logCount, webhookCount, apiKeyCount] = await Promise.all([
       prisma.landing.count({ where: { userId: req.userId } }),

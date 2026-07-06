@@ -24,14 +24,16 @@ export function AuthProvider({ children }) {
     const saved = localStorage.getItem("user");
     if (token && saved) {
       setUser(JSON.parse(saved));
-      syncUser().catch(() => {});
+      syncUser().finally(() => setLoading(false));
+    } else {
+      setLoading(false);
     }
-    setLoading(false);
   }, [syncUser]);
 
   const login = async (email, password) => {
     const data = await api.login(email, password);
     localStorage.setItem("token", data.token);
+    if (data.refreshToken) localStorage.setItem("refreshToken", data.refreshToken);
     localStorage.setItem("user", JSON.stringify(data.user));
     setUser(data.user);
     return data;
@@ -40,6 +42,7 @@ export function AuthProvider({ children }) {
   const register = async (data) => {
     const res = await api.register(data);
     localStorage.setItem("token", res.token);
+    if (res.refreshToken) localStorage.setItem("refreshToken", res.refreshToken);
     localStorage.setItem("user", JSON.stringify(res.user));
     setUser(res.user);
     return res;
@@ -50,6 +53,7 @@ export function AuthProvider({ children }) {
       await api.logout();
     } catch {}
     localStorage.removeItem("token");
+    localStorage.removeItem("refreshToken");
     localStorage.removeItem("user");
     setUser(null);
   }, []);

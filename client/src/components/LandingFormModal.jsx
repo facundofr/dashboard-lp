@@ -9,8 +9,8 @@ import {
 import { Button } from "./ui/button"
 import { Input } from "./ui/input"
 import { Label } from "./ui/label"
+import { useCategories } from "../hooks/useCategories"
 
-const categorias = ["Cober", "Bristol", "Medicals", "Centros Médicos"]
 const estados = ["ACTIVO", "INACTIVO", "EN_DESARROLLO"]
 
 const emptyForm = {
@@ -23,6 +23,7 @@ export default function LandingFormModal({ onSubmit, initialData, onSuccess, chi
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState(emptyForm)
   const [error, setError] = useState("")
+  const { data: categories = [] } = useCategories()
 
   useEffect(() => {
     if (open) {
@@ -87,8 +88,8 @@ export default function LandingFormModal({ onSubmit, initialData, onSuccess, chi
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {categorias.map((c) => (
-                    <SelectItem key={c} value={c}>{c}</SelectItem>
+                  {categories.map((c) => (
+                    <SelectItem key={c.name} value={c.name}>{c.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

@@ -16,4 +16,14 @@ const apiLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-module.exports = { authLimiter, apiLimiter };
+const apiKeyLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000,
+  max: 30,
+  message: { message: 'Demasiadas solicitudes a la API pública. Límite: 30/min.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.headers['x-api-key'] || req.socket.remoteAddress,
+  validate: { xForwardedForHeader: false },
+});
+
+module.exports = { authLimiter, apiLimiter, apiKeyLimiter };

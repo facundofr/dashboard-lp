@@ -1,11 +1,11 @@
 const express = require('express');
 const prisma = require('../lib/prisma');
-const { authMiddleware } = require('../middleware/auth');
+const { authMiddleware, checkDisabled } = require('../middleware/auth');
 const { logger } = require('../lib/logger');
 
 const router = express.Router();
 
-router.use(authMiddleware);
+router.use(authMiddleware, checkDisabled);
 
 router.get('/', async (req, res) => {
   try {

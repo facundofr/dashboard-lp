@@ -24,7 +24,7 @@ const registerValidation = [
 const landingValidation = [
   body('nombre').notEmpty().withMessage('El nombre es requerido').trim(),
   body('marca').notEmpty().withMessage('La marca es requerida').trim(),
-  body('url').trim().customSanitizer((value) => {
+  body('url').optional({ values: 'falsy' }).trim().customSanitizer((value) => {
     if (!value.startsWith('http://') && !value.startsWith('https://')) {
       return `https://${value}`;
     }

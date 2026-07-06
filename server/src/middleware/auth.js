@@ -20,7 +20,8 @@ const PLAN_LIMITS = {
 
 function generateTokens(userId, email) {
   const accessToken = jwt.sign({ id: userId, email, type: 'access' }, JWT_SECRET, { expiresIn: ACCESS_EXPIRY });
-  return { accessToken };
+  const refreshToken = jwt.sign({ id: userId, email, type: 'refresh' }, JWT_SECRET, { expiresIn: `${REFRESH_EXPIRY_DAYS}d` });
+  return { accessToken, refreshToken };
 }
 
 function authMiddleware(req, res, next) {
@@ -45,6 +46,18 @@ function authMiddleware(req, res, next) {
       return res.status(401).json({ message: 'Token expirado', code: 'TOKEN_EXPIRED' });
     }
     return res.status(401).json({ message: 'Token inválido', code: 'INVALID_TOKEN' });
+  }
+}
+
+async function checkDisabled(req, res, next) {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.userId }, select: { disabled: true } });
+    if (user && user.disabled) {
+      return res.status(403).json({ message: 'Cuenta deshabilitada. Contactá al administrador.', code: 'ACCOUNT_DISABLED' });
+    }
+    next();
+  } catch {
+    next();
   }
 }
 
@@ -128,6 +141,7 @@ async function planMiddleware(req, res, next) {
 
 module.exports = {
   authMiddleware,
+  checkDisabled,
   optionalAuth,
   adminMiddleware,
   apiKeyMiddleware,

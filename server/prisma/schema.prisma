@@ -23,6 +23,7 @@ model User {
   emailVerificationToken String?
   resetPasswordToken    String?
   resetPasswordExpires  DateTime?
+  disabled              Boolean   @default(false)
   provider              String?
   providerId            String?
   createdAt             DateTime  @default(now())
@@ -32,6 +33,7 @@ model User {
   auditLogs             AuditLog[]
   apiKeys               ApiKey[]
   statusPage            StatusPage?
+  notifications         Notification[]
 }
 
 model WebhookConfig {
@@ -46,6 +48,37 @@ model WebhookConfig {
   updatedAt DateTime @updatedAt
 }
 
+model TemplateType {
+  id            Int      @id @default(autoincrement())
+  name          String   @unique
+  icon          String   @default("📄")
+  description   String?
+  hasMonitoring Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  fieldDefinitions FieldDefinition[]
+  landings         Landing[]
+}
+
+model FieldDefinition {
+  id              Int      @id @default(autoincrement())
+  templateTypeId  Int
+  templateType    TemplateType @relation(fields: [templateTypeId], references: [id], onDelete: Cascade)
+  name            String
+  label           String
+  fieldType       String   @default("text")
+  required        Boolean  @default(false)
+  sortOrder       Int      @default(0)
+  placeholder     String?
+  options         String?
+  defaultVisible  Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([templateTypeId, name])
+}
+
 model Landing {
   id        Int      @id @default(autoincrement())
   nombre    String
@@ -53,6 +86,11 @@ model Landing {
   url       String
   estado    String   @default("ACTIVO")
   categoria String   @default("Cober")
+
+  templateTypeId Int?
+  templateType   TemplateType? @relation(fields: [templateTypeId], references: [id], onDelete: SetNull)
+  dynamicValues  String?
+  visibleFields  String?
 
   ftpHost   String?
   ftpUser   String?
@@ -84,8 +122,9 @@ model Landing {
   userId Int
   user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  logs   CheckLog[]
-  audits AuditLog[]
+  logs      CheckLog[]
+  audits    AuditLog[]
+  incidents Incident[]
 }
 
 model AuditLog {
@@ -111,6 +150,17 @@ model CheckLog {
   landing     Landing  @relation(fields: [landingId], references: [id], onDelete: Cascade)
 }
 
+model Incident {
+  id              Int       @id @default(autoincrement())
+  landingId       Int
+  landing         Landing   @relation(fields: [landingId], references: [id], onDelete: Cascade)
+  startedAt       DateTime  @default(now())
+  recoveredAt     DateTime?
+  duration        Int?
+  acknowledgedAt  DateTime?
+  createdAt       DateTime  @default(now())
+}
+
 model ApiKey {
   id         Int       @id @default(autoincrement())
   name       String    @default("API Key")
@@ -122,6 +172,26 @@ model ApiKey {
   expiresAt  DateTime?
   lastUsedAt DateTime?
   createdAt  DateTime  @default(now())
+}
+
+model Notification {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  type        String   @default("info")
+  link        String?
+  read        Boolean  @default(false)
+  createdAt   DateTime @default(now())
+}
+
+model Category {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  color     String   @default("from-purple-600/80 to-pink-600/80")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model StatusPage {

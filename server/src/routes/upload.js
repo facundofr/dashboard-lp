@@ -2,11 +2,11 @@ const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const { authMiddleware } = require('../middleware/auth');
+const { authMiddleware, checkDisabled } = require('../middleware/auth');
 const { logger } = require('../lib/logger');
 
 const router = express.Router();
-router.use(authMiddleware);
+router.use(authMiddleware, checkDisabled);
 
 const uploadDir = path.join(__dirname, '..', '..', 'uploads');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });

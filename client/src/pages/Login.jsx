@@ -15,8 +15,19 @@ export default function Login() {
   const [error, setError] = useState("")
   const { login, register } = useAuth()
 
+  const validate = () => {
+    if (!email.trim()) return "El email es requerido"
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return "Email inválido"
+    if (!password) return "La contraseña es requerida"
+    if (password.length < 6) return "La contraseña debe tener al menos 6 caracteres"
+    if (!isLogin && !nombre.trim()) return "El nombre es requerido"
+    return null
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
+    const validationError = validate()
+    if (validationError) { setError(validationError); return }
     setError("")
     try {
       if (isLogin) {
@@ -37,7 +48,7 @@ export default function Login() {
         </div>
         <Card>
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl">Gestor de Landings</CardTitle>
+          <CardTitle className="text-2xl">Gestor de Branch Comercial</CardTitle>
           <CardDescription>
             {isLogin ? "Iniciá sesión para continuar" : "Creá tu cuenta"}
           </CardDescription>

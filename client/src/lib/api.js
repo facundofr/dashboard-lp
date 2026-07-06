@@ -1,5 +1,8 @@
 const BASE = '/api';
 
+let isRefreshing = false;
+let refreshQueue = [];
+
 async function request(path, options = {}) {
   const token = localStorage.getItem('token');
   const headers = { ...options.headers };
@@ -8,14 +11,26 @@ async function request(path, options = {}) {
     headers['Content-Type'] = 'application/json';
   }
 
-  let res = await fetch(`${BASE}${path}`, { ...options, headers, credentials: 'include' });
+  let res = await fetch(`${BASE}${path}`, { ...options, headers });
 
   if (res.status === 401) {
     const body = await res.json().catch(() => ({}));
-    if (body.code === 'TOKEN_EXPIRED' || body.code === 'INVALID_TOKEN') {
+    if (body.code === 'TOKEN_EXPIRED') {
+      const newToken = await attemptRefresh();
+      if (newToken) {
+        headers['Authorization'] = `Bearer ${newToken}`;
+        res = await fetch(`${BASE}${path}`, { ...options, headers });
+        if (res.ok) {
+          const contentType = res.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) return res.json();
+          return res;
+        }
+      }
+    }
+    if (body.code === 'TOKEN_EXPIRED' || body.code === 'INVALID_TOKEN' || body.code === 'NO_TOKEN') {
       localStorage.removeItem('token');
+      localStorage.removeItem('refreshToken');
       localStorage.removeItem('user');
-      window.location.href = '/login';
       throw new Error('Sesión expirada');
     }
     throw new Error(body.message || 'No autorizado');
@@ -31,6 +46,43 @@ async function request(path, options = {}) {
     return res.json();
   }
   return res;
+}
+
+async function attemptRefresh() {
+  const refreshToken = localStorage.getItem('refreshToken');
+  if (!refreshToken) return null;
+
+  if (isRefreshing) {
+    return new Promise((resolve) => refreshQueue.push(resolve));
+  }
+
+  isRefreshing = true;
+  try {
+    const res = await fetch(`${BASE}/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken }),
+    });
+    if (!res.ok) {
+      isRefreshing = false;
+      refreshQueue.forEach((r) => r(null));
+      refreshQueue = [];
+      return null;
+    }
+    const data = await res.json();
+    localStorage.setItem('token', data.token);
+    if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
+    if (data.user) localStorage.setItem('user', JSON.stringify(data.user));
+    isRefreshing = false;
+    refreshQueue.forEach((r) => r(data.token));
+    refreshQueue = [];
+    return data.token;
+  } catch {
+    isRefreshing = false;
+    refreshQueue.forEach((r) => r(null));
+    refreshQueue = [];
+    return null;
+  }
 }
 
 export const api = {
@@ -92,6 +144,8 @@ export const api = {
 
   getUsers: () => request('/auth/users'),
   updateUserRole: (id, role) => request(`/auth/users/${id}/role`, { method: 'PUT', body: JSON.stringify({ role }) }),
+  toggleUserStatus: (id) => request(`/auth/users/${id}/toggle-status`, { method: 'PUT' }),
+  deleteUser: (id) => request(`/auth/users/${id}`, { method: 'DELETE' }),
 
   updateProfile: (data) => request('/auth/profile', { method: 'PUT', body: JSON.stringify(data) }),
 
@@ -121,4 +175,29 @@ export const api = {
 
   getPublicStatusPage: (slug) => request(`/status/by-slug/${slug}`),
   getPublicUptime: (slug, landingId) => request(`/status/${slug}/uptime/${landingId}`),
+
+  getCategories: () => request('/categories'),
+  createCategory: (data) => request('/categories', { method: 'POST', body: JSON.stringify(data) }),
+  updateCategory: (id, data) => request(`/categories/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteCategory: (id) => request(`/categories/${id}`, { method: 'DELETE' }),
+
+  getTemplateTypes: () => request('/template-types'),
+  createTemplateType: (data) => request('/template-types', { method: 'POST', body: JSON.stringify(data) }),
+  updateTemplateType: (id, data) => request(`/template-types/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteTemplateType: (id) => request(`/template-types/${id}`, { method: 'DELETE' }),
+
+  getFieldDefinitions: (typeId) => request(`/template-types/${typeId}/fields`),
+  createFieldDefinition: (typeId, data) => request(`/template-types/${typeId}/fields`, { method: 'POST', body: JSON.stringify(data) }),
+  updateFieldDefinition: (typeId, fieldId, data) => request(`/template-types/${typeId}/fields/${fieldId}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteFieldDefinition: (typeId, fieldId) => request(`/template-types/${typeId}/fields/${fieldId}`, { method: 'DELETE' }),
+
+  getNotifications: () => request('/notifications'),
+  createNotification: (data) => request('/notifications', { method: 'POST', body: JSON.stringify(data) }),
+  markNotificationsRead: () => request('/notifications/read-all', { method: 'PUT' }),
+  clearNotifications: () => request('/notifications/clear', { method: 'DELETE' }),
+
+  getActiveIncidents: () => request('/incidents'),
+  getIncidentHistory: (page = 1, limit = 20) => request(`/incidents/history?page=${page}&limit=${limit}`),
+  getIncident: (id) => request(`/incidents/${id}`),
+  acknowledgeIncident: (id) => request(`/incidents/${id}/acknowledge`, { method: 'PUT' }),
 };

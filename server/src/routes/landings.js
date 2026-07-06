@@ -1,16 +1,16 @@
 const express = require('express');
 const prisma = require('../lib/prisma');
-const { authMiddleware, planMiddleware } = require('../middleware/auth');
+const { authMiddleware, checkDisabled, planMiddleware } = require('../middleware/auth');
 const { checkUrl, checkSsl, scanMetaTags } = require('../lib/checker');
 const { logAudit } = require('../lib/audit');
-const { sendDownAlert, sendSslAlert } = require('../lib/mailer');
+const { processCheckResult } = require('../lib/incidentHelper');
 const { encrypt } = require('../lib/ftpEncrypt');
 const { landingValidation } = require('../middleware/validator');
 const { logger } = require('../lib/logger');
 
 const router = express.Router();
 
-router.use(authMiddleware);
+router.use(authMiddleware, checkDisabled);
 
 router.get('/', async (req, res) => {
   try {
@@ -33,7 +33,7 @@ router.get('/', async (req, res) => {
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,
         take: limit,
-        include: { _count: { select: { logs: true } } },
+        include: { _count: { select: { logs: true } }, templateType: true },
       }),
       prisma.landing.count({ where }),
     ]);
@@ -57,7 +57,7 @@ router.get('/:id', async (req, res) => {
   try {
     const landing = await prisma.landing.findFirst({
       where: { id: parseInt(req.params.id), userId: req.userId },
-      include: { logs: { orderBy: { createdAt: 'desc' }, take: 20 } },
+      include: { logs: { orderBy: { createdAt: 'desc' }, take: 20 }, templateType: true },
     });
     if (!landing) return res.status(404).json({ message: 'Landing no encontrada' });
     res.json(landing);
@@ -87,10 +87,13 @@ router.get('/:id/logs', async (req, res) => {
 
 router.post('/', landingValidation, planMiddleware, async (req, res) => {
   try {
-    const { nombre, marca, url, estado, categoria, ftpHost, ftpUser, ftpPass, ftpPath, tecnologias, notas, imagenUrl, sheetUrl, formStatus, tags, cliente } = req.body;
+    const { nombre, marca, url, estado, categoria, templateTypeId, dynamicValues, visibleFields, ftpHost, ftpUser, ftpPass, ftpPath, tecnologias, notas, imagenUrl, sheetUrl, formStatus, tags, cliente } = req.body;
     const landing = await prisma.landing.create({
       data: {
         nombre, marca, url, estado: estado || 'ACTIVO', categoria: categoria || 'Cober',
+        templateTypeId: templateTypeId ? Number(templateTypeId) : null,
+        dynamicValues: dynamicValues ? JSON.stringify(dynamicValues) : null,
+        visibleFields: visibleFields ? JSON.stringify(visibleFields) : null,
         ftpHost, ftpUser, ftpPass: ftpPass ? encrypt(ftpPass) : null, ftpPath, tecnologias, notas, imagenUrl, sheetUrl, formStatus, tags, cliente,
         userId: req.userId,
       },
@@ -110,8 +113,11 @@ router.put('/:id', async (req, res) => {
     });
     if (!existing) return res.status(404).json({ message: 'Landing no encontrada' });
 
-    const { nombre, marca, url, estado, categoria, ftpHost, ftpUser, ftpPass, ftpPath, tecnologias, notas, imagenUrl, sheetUrl, formStatus, tags, cliente } = req.body;
+    const { nombre, marca, url, estado, categoria, templateTypeId, dynamicValues, visibleFields, ftpHost, ftpUser, ftpPass, ftpPath, tecnologias, notas, imagenUrl, sheetUrl, formStatus, tags, cliente } = req.body;
     const data = { nombre, marca, url, estado, categoria, ftpHost, ftpUser, ftpPath, tecnologias, notas, imagenUrl, sheetUrl, formStatus, tags, cliente };
+    if (templateTypeId !== undefined) data.templateTypeId = templateTypeId ? Number(templateTypeId) : null;
+    if (dynamicValues !== undefined) data.dynamicValues = dynamicValues ? JSON.stringify(dynamicValues) : null;
+    if (visibleFields !== undefined) data.visibleFields = visibleFields ? JSON.stringify(visibleFields) : null;
     if (ftpPass) data.ftpPass = encrypt(ftpPass);
     const landing = await prisma.landing.update({
       where: { id: parseInt(req.params.id) },
@@ -183,18 +189,8 @@ router.post('/:id/check', async (req, res) => {
       },
     });
 
-    if (!url.isUp) {
-      const user = await prisma.user.findUnique({ where: { id: req.userId } });
-      if (user && user.notifyEmail) {
-        await sendDownAlert(user.email, user.nombre, { ...landing, ultimoCodigo: url.statusCode, ultimoMs: url.responseMs, ultimoCheck: new Date() });
-      }
-    }
-    if (ssl.valid && ssl.daysRemaining !== null && ssl.daysRemaining < 7) {
-      const user = await prisma.user.findUnique({ where: { id: req.userId } });
-      if (user && user.sendSslAlerts) {
-        await sendSslAlert(user.email, user.nombre, landing, ssl.daysRemaining);
-      }
-    }
+    const updatedLanding = { ...landing, ultimoStatus: url.isUp ? 'UP' : 'DOWN' };
+    await processCheckResult({ landing: updatedLanding, urlResult: url, ssl });
 
     res.json({ url, ssl, log });
   } catch (err) {
@@ -237,7 +233,15 @@ router.get('/audit/all', async (req, res) => {
 
 router.post('/check-all', async (req, res) => {
   try {
-    const landings = await prisma.landing.findMany({ where: { userId: req.userId } });
+    const landings = await prisma.landing.findMany({
+      where: {
+        userId: req.userId,
+        OR: [
+          { templateTypeId: null },
+          { templateType: { hasMonitoring: true } },
+        ],
+      },
+    });
     const CONCURRENCY = 10;
     const results = [];
     for (let i = 0; i < landings.length; i += CONCURRENCY) {
@@ -252,6 +256,8 @@ router.post('/check-all', async (req, res) => {
             where: { id: landing.id },
             data: { ultimoCheck: new Date(), ultimoStatus: urlResult.isUp ? 'UP' : 'DOWN', ultimoCodigo: urlResult.statusCode, ultimoMs: urlResult.responseMs },
           });
+          const updatedLanding = { ...landing, ultimoStatus: urlResult.isUp ? 'UP' : 'DOWN' };
+          await processCheckResult({ landing: updatedLanding, urlResult, ssl: null });
           return { id: landing.id, url: landing.url, isUp: urlResult.isUp };
         } catch (err) {
           logger.warn({ err: err.message, landingId: landing.id }, 'Error en check-all individual');
@@ -283,6 +289,8 @@ router.post('/bulk/check', async (req, res) => {
           const urlResult = await checkUrl(landing.url);
           await prisma.checkLog.create({ data: { landingId: landing.id, statusCode: urlResult.statusCode, responseMs: urlResult.responseMs, isUp: urlResult.isUp, error: urlResult.error } });
           await prisma.landing.update({ where: { id: landing.id }, data: { ultimoCheck: new Date(), ultimoStatus: urlResult.isUp ? 'UP' : 'DOWN', ultimoCodigo: urlResult.statusCode, ultimoMs: urlResult.responseMs } });
+          const updatedLanding = { ...landing, ultimoStatus: urlResult.isUp ? 'UP' : 'DOWN' };
+          await processCheckResult({ landing: updatedLanding, urlResult, ssl: null });
           return { id: landing.id, url: landing.url, isUp: urlResult.isUp };
         } catch (err) {
           logger.warn({ err: err.message, landingId: landing.id }, 'Error en bulk check individual');
@@ -328,7 +336,7 @@ router.get('/export/csv', async (req, res) => {
     ]);
     const csv = [headers.join(','), ...rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(','))].join('\n');
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename=landings-${new Date().toISOString().slice(0, 10)}.csv`);
+    res.setHeader('Content-Disposition', `attachment; filename=branches-${new Date().toISOString().slice(0, 10)}.csv`);
     res.send('\ufeff' + csv);
   } catch (err) {
     logger.error({ err }, 'Error al exportar CSV');

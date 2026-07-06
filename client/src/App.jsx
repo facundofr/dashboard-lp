@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { NotificationProvider } from "./context/NotificationContext";
 import { ThemeProvider } from "./context/ThemeContext";
@@ -9,6 +10,12 @@ import Dashboard from "./pages/Dashboard";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import StatusPage from "./pages/StatusPage";
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: { retry: 1, refetchOnWindowFocus: false },
+  },
+});
 
 function AppRoutes() {
   const { user, loading } = useAuth();
@@ -35,16 +42,18 @@ function AppRoutes() {
 export default function App() {
   return (
     <ErrorBoundary>
-      <BrowserRouter>
-        <ThemeProvider>
-          <AuthProvider>
-            <NotificationProvider>
-              <AppRoutes />
-            </NotificationProvider>
-            <Toaster position="top-right" richColors />
-          </AuthProvider>
-        </ThemeProvider>
-      </BrowserRouter>
+      <QueryClientProvider client={queryClient}>
+        <BrowserRouter>
+          <ThemeProvider>
+            <AuthProvider>
+              <NotificationProvider>
+                <AppRoutes />
+              </NotificationProvider>
+              <Toaster position="top-right" richColors />
+            </AuthProvider>
+          </ThemeProvider>
+        </BrowserRouter>
+      </QueryClientProvider>
     </ErrorBoundary>
   );
 }

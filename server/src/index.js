@@ -7,8 +7,7 @@ const path = require('path');
 const prisma = require('./lib/prisma');
 const { logger } = require('./lib/logger');
 const { checkUrl, checkSsl, scanMetaTags } = require('./lib/checker');
-const { sendDownAlert, sendSslAlert } = require('./lib/mailer');
-const { sendWebhook } = require('./lib/webhook');
+const { processCheckResult } = require('./lib/incidentHelper');
 const { apiLimiter } = require('./middleware/rateLimiter');
 const errorHandler = require('./middleware/errorHandler');
 const authRoutes = require('./routes/auth');
@@ -18,14 +17,26 @@ const uploadRoutes = require('./routes/upload');
 const webhookRoutes = require('./routes/webhooks');
 const statusPageRoutes = require('./routes/statuspage');
 const publicApiRoutes = require('./routes/publicapi');
+const notificationRoutes = require('./routes/notifications');
+const incidentRoutes = require('./routes/incidents');
+const categoryRoutes = require('./routes/categories');
+const templateTypeRoutes = require('./routes/templateTypes');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 const corsOrigin = process.env.CORS_ORIGIN || 'http://localhost:5173';
 
+const allowedOrigins = corsOrigin.split(',').map((o) => o.trim());
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' }, contentSecurityPolicy: false }));
 app.use(compression());
-app.use(cors({ origin: corsOrigin, methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'], credentials: true }));
+app.use(cors({
+  origin: (origin, cb) => {
+    if (!origin || allowedOrigins.includes(origin) || allowedOrigins.includes('*')) return cb(null, true);
+    cb(null, false);
+  },
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+  credentials: true,
+}));
 app.use(express.json({ limit: '10mb' }));
 
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
@@ -38,6 +49,10 @@ app.use('/api/upload', uploadRoutes);
 app.use('/api/webhooks', webhookRoutes);
 app.use('/api/status', statusPageRoutes);
 app.use('/api/v1', publicApiRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/incidents', incidentRoutes);
+app.use('/api/categories', categoryRoutes);
+app.use('/api/template-types', templateTypeRoutes);
 
 const clientBuild = path.join(__dirname, '..', '..', 'client', 'dist');
 app.use(express.static(clientBuild));
@@ -58,15 +73,36 @@ setInterval(autoCheckAll, 15 * 60 * 1000);
 
 async function autoCheckAll() {
   try {
-    const landings = await prisma.landing.findMany({ where: { estado: 'ACTIVO' } });
-    logger.info({ count: landings.length }, 'Auto-check iniciado');
-
+    const BATCH_SIZE = 50;
     const CONCURRENCY = 10;
-    for (let i = 0; i < landings.length; i += CONCURRENCY) {
-      const batch = landings.slice(i, i + CONCURRENCY);
-      await Promise.allSettled(batch.map((landing) => checkOneLanding(landing)));
+    let processed = 0;
+    let hasMore = true;
+
+    logger.info('Auto-check iniciado');
+
+    while (hasMore) {
+      const landings = await prisma.landing.findMany({
+        where: {
+          estado: 'ACTIVO',
+          OR: [
+            { templateTypeId: null },
+            { templateType: { hasMonitoring: true } },
+          ],
+        },
+        skip: processed,
+        take: BATCH_SIZE,
+      });
+      if (landings.length === 0) { hasMore = false; break; }
+
+      for (let i = 0; i < landings.length; i += CONCURRENCY) {
+        const batch = landings.slice(i, i + CONCURRENCY);
+        await Promise.allSettled(batch.map((landing) => checkOneLanding(landing)));
+      }
+
+      processed += landings.length;
+      logger.info({ processed }, 'Auto-check progreso');
     }
-    logger.info('Auto-check completado');
+    logger.info({ total: processed }, 'Auto-check completado');
   } catch (err) {
     logger.error({ err: err.message }, 'Error en auto-check general');
   }
@@ -105,29 +141,8 @@ async function checkOneLanding(landing) {
 
     await prisma.landing.update({ where: { id: landing.id }, data: updateData });
 
-    const wasDown = !url.isUp;
-    const sslExpiring = ssl.valid && ssl.daysRemaining !== null && ssl.daysRemaining < 7;
-
-    if (wasDown || sslExpiring) {
-      const users = await prisma.user.findMany({ where: { landings: { some: { id: landing.id } } } });
-      const webhooks = await prisma.webhookConfig.findMany({ where: { enabled: true, userId: { in: users.map((u) => u.id) } } });
-      for (const user of users) {
-        if (wasDown && user.notifyEmail) {
-          await sendDownAlert(user.email, user.nombre, { ...landing, ultimoCodigo: url.statusCode, ultimoMs: url.responseMs, ultimoCheck: new Date() });
-        }
-        if (sslExpiring && user.sendSslAlerts) {
-          await sendSslAlert(user.email, user.nombre, landing, ssl.daysRemaining);
-        }
-      }
-      for (const wh of webhooks) {
-        if (wasDown && wh.events.includes('down')) {
-          await sendWebhook(wh, { event: 'down', landing: { ...landing, ultimoCodigo: url.statusCode, ultimoMs: url.responseMs } });
-        }
-        if (sslExpiring && wh.events.includes('ssl_expiring')) {
-          await sendWebhook(wh, { event: 'ssl_expiring', landing, daysRemaining: ssl.daysRemaining });
-        }
-      }
-    }
+    const updatedLanding = { ...landing, ...updateData };
+    await processCheckResult({ landing: updatedLanding, urlResult: url, ssl });
   } catch (err) {
     logger.error({ err: err.message, url: landing.url }, 'Error en check individual');
   }
