@@ -3,8 +3,7 @@ generator client {
 }
 
 datasource db {
-  // SQLite para desarrollo local
-  // Cambiar a "postgresql" para producción
+  // SQLite para desarrollo local. Cambiar a "postgresql" para producción (VPS con Docker).
   provider = "sqlite"
   url      = env("DATABASE_URL")
 }
@@ -23,6 +22,7 @@ model User {
   emailVerificationToken String?
   resetPasswordToken    String?
   resetPasswordExpires  DateTime?
+  refreshTokenHash      String?
   disabled              Boolean   @default(false)
   provider              String?
   providerId            String?
@@ -31,7 +31,6 @@ model User {
   landings              Landing[]
   webhookConfigs        WebhookConfig[]
   auditLogs             AuditLog[]
-  apiKeys               ApiKey[]
   statusPage            StatusPage?
   notifications         Notification[]
 }
@@ -159,19 +158,6 @@ model Incident {
   duration        Int?
   acknowledgedAt  DateTime?
   createdAt       DateTime  @default(now())
-}
-
-model ApiKey {
-  id         Int       @id @default(autoincrement())
-  name       String    @default("API Key")
-  keyHash    String    @unique
-  prefix     String
-  userId     Int
-  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  enabled    Boolean   @default(true)
-  expiresAt  DateTime?
-  lastUsedAt DateTime?
-  createdAt  DateTime  @default(now())
 }
 
 model Notification {

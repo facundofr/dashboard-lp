@@ -48,7 +48,7 @@ export default function Login() {
         </div>
         <Card>
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl">Gestor de Branch Comercial</CardTitle>
+          <CardTitle className="text-2xl">Gestor de Activos Digitales</CardTitle>
           <CardDescription>
             {isLogin ? "Iniciá sesión para continuar" : "Creá tu cuenta"}
           </CardDescription>

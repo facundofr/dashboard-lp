@@ -1,6 +1,6 @@
 const express = require('express');
 const prisma = require('../lib/prisma');
-const { authMiddleware } = require('../middleware/auth');
+const { authMiddleware, adminMiddleware } = require('../middleware/auth');
 const { logger } = require('../lib/logger');
 
 const router = express.Router();
@@ -19,7 +19,7 @@ router.get('/', async (req, res) => {
   }
 });
 
-router.post('/', async (req, res) => {
+router.post('/', adminMiddleware, async (req, res) => {
   try {
     const { name, icon, description, hasMonitoring, fields } = req.body;
     if (!name || !name.trim()) return res.status(400).json({ message: 'El nombre es requerido' });
@@ -54,7 +54,7 @@ router.post('/', async (req, res) => {
   }
 });
 
-router.put('/:id', async (req, res) => {
+router.put('/:id', adminMiddleware, async (req, res) => {
   try {
     const { name, icon, description, hasMonitoring } = req.body;
     const type = await prisma.templateType.update({
@@ -69,7 +69,7 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', adminMiddleware, async (req, res) => {
   try {
     await prisma.templateType.delete({ where: { id: Number(req.params.id) } });
     res.json({ message: 'Tipo eliminado' });
@@ -92,7 +92,7 @@ router.get('/:id/fields', async (req, res) => {
   }
 });
 
-router.post('/:id/fields', async (req, res) => {
+router.post('/:id/fields', adminMiddleware, async (req, res) => {
   try {
     const { name, label, fieldType, required, sortOrder, placeholder, options, defaultVisible } = req.body;
     if (!name || !name.trim()) return res.status(400).json({ message: 'El nombre del campo es requerido' });
@@ -118,7 +118,7 @@ router.post('/:id/fields', async (req, res) => {
   }
 });
 
-router.put('/:id/fields/:fieldId', async (req, res) => {
+router.put('/:id/fields/:fieldId', adminMiddleware, async (req, res) => {
   try {
     const { name, label, fieldType, required, sortOrder, placeholder, options, defaultVisible } = req.body;
     const data = {};
@@ -142,7 +142,7 @@ router.put('/:id/fields/:fieldId', async (req, res) => {
   }
 });
 
-router.delete('/:id/fields/:fieldId', async (req, res) => {
+router.delete('/:id/fields/:fieldId', adminMiddleware, async (req, res) => {
   try {
     await prisma.fieldDefinition.delete({ where: { id: Number(req.params.fieldId) } });
     res.json({ message: 'Campo eliminado' });

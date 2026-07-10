@@ -11,14 +11,12 @@ const steps = [
   { id: "check", label: "Verificá una landing", desc: "Hacé click en 'Verificar' para ver su estado actual." },
   { id: "statuspage", label: "Configurá tu status page", desc: "Compartí el estado de tus landings con un link público." },
   { id: "webhook", label: "Conectá un webhook", desc: "Recibí notificaciones en Slack o Discord." },
-  { id: "apikey", label: "Generá una API key", desc: "Integrá con otros sistemas usando la API pública." },
 ]
 
 export default function OnboardingChecklist() {
   const [dismissed, setDismissed] = useState(false)
   const [stats, setStats] = useState(null)
   const [webhooks, setWebhooks] = useState(0)
-  const [apiKeys, setApiKeys] = useState(0)
   const [statusPage, setStatusPage] = useState(null)
 
   useEffect(() => {
@@ -27,7 +25,6 @@ export default function OnboardingChecklist() {
 
     api.getStats().then((s) => setStats(s)).catch(() => {})
     api.getWebhooks().then((w) => setWebhooks(w.length)).catch(() => {})
-    api.getApiKeys().then((k) => setApiKeys(k.length)).catch(() => {})
     api.getStatusPage().then((sp) => setStatusPage(sp)).catch(() => {})
   }, [])
 
@@ -38,7 +35,6 @@ export default function OnboardingChecklist() {
     check: (stats?.logs || 0) > 0,
     statuspage: !!statusPage,
     webhook: webhooks > 0,
-    apikey: apiKeys > 0,
   }
 
   const completedCount = Object.values(completed).filter(Boolean).length

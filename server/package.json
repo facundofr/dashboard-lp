@@ -11,7 +11,7 @@
     "db:migrate": "npx prisma migrate dev --name init",
     "test": "node --test tests/*.test.js",
     "backup": "powershell -File ../scripts/backup.ps1",
-    "setup": "npm run db:generate && npm run db:deploy",
+    "setup": "npm run db:generate && npx prisma db push",
     "deploy": "npm run build:client && npm run setup && node src/index.js"
   },
   "dependencies": {
@@ -22,9 +22,12 @@
     "cors": "^2.8.5",
     "crypto-js": "^4.2.0",
     "dotenv": "^17.4.2",
+    "escape-html": "^1.0.3",
     "express": "^4.21.0",
     "express-rate-limit": "^8.5.2",
     "express-validator": "^7.3.2",
+    "file-type": "^22.0.1",
+    "google-auth-library": "^10.9.0",
     "helmet": "^8.2.0",
     "jsonwebtoken": "^9.0.2",
     "multer": "^1.4.5-lts.1",

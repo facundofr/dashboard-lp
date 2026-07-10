@@ -9,11 +9,11 @@ import { useActiveIncidents } from "../hooks/useIncidents"
 import Logo from "../components/Logo"
 import { api } from "../lib/api"
 import BranchCard from "../components/BranchCard"
+import BranchTable from "../components/BranchTable"
 import BranchFormModal from "../components/BranchFormModal"
 import UptimeChart from "../components/UptimeChart"
 import ProfileSettings from "../components/ProfileSettings"
 import StatusPageSettings from "../components/StatusPageSettings"
-import ApiKeyManager from "../components/ApiKeyManager"
 import WebhookSettings from "../components/WebhookSettings"
 import UserManager from "../components/UserManager"
 import OnboardingChecklist from "../components/OnboardingChecklist"
@@ -62,6 +62,7 @@ export default function Dashboard() {
   const [notifyEmail, setNotifyEmail] = useState(true)
   const [sendSslAlerts, setSendSslAlerts] = useState(true)
   const [incidentPage, setIncidentPage] = useState(1)
+  const [viewMode, setViewMode] = useState("grid")
   const notifiedDown = useRef(new Set())
   const notifiedSsl = useRef(new Set())
   const { data: activeIncidents = [] } = useActiveIncidents()
@@ -112,15 +113,12 @@ export default function Dashboard() {
 
   const sidebarLinks = [
     { label: "Dashboard", icon: Home, action: () => { setActiveCategoria(null); setActiveStatus("todas"); setActiveUptime("todas"); setActiveTag(null); setSearch(""); setCurrentPage(1); } },
-    { label: "Branch Comercial", icon: Globe, action: () => document.querySelector(".flex-1.overflow-y-auto")?.scrollTo({ top: 0, behavior: "smooth" }) },
     { label: "SSL", icon: ShieldAlert, action: () => modals.setSslModal(true) },
     { label: "Status Page", icon: Share2, action: () => modals.setStatusPageOpen(true) },
-    { label: "API Keys", icon: Key, action: () => modals.setApiKeysOpen(true) },
     { label: "Categorías", icon: Tags, action: () => modals.setCategoriesOpen(true) },
     { label: "Tipos de Template", icon: FileText, action: () => modals.setTemplateTypesOpen(true) },
     { label: "Incidentes", icon: AlertOctagon, count: activeIncidents.length, action: () => modals.setIncidentsOpen(true) },
     ...(user?.role === "admin" ? [{ label: "Usuarios", icon: ShieldAlert, action: () => modals.setUsersOpen(true) }] : []),
-    { label: "Auditoría", icon: History, action: () => modals.openAudit() },
     { label: "Configuración", icon: Settings, action: () => modals.setSettingsOpen(true) },
   ]
 
@@ -141,20 +139,20 @@ export default function Dashboard() {
   }
 
   const handleBulkCheck = async () => {
-    if (selectedIds.size === 0) { toast.error("Seleccioná al menos una branch comercial"); return }
+    if (selectedIds.size === 0) { toast.error("Seleccioná al menos una activo digital"); return }
     try {
       await bulkCheckLandings([...selectedIds])
-      toast.success(`${selectedIds.size} branches verificadas`)
+      toast.success(`${selectedIds.size} activos verificados`)
       setSelectedIds(new Set())
     } catch { toast.error("Error en verificación masiva") }
   }
 
   const handleBulkDelete = async () => {
     if (selectedIds.size === 0) return
-    if (!confirm(`¿Eliminar ${selectedIds.size} branch(es) comercial(es)?`)) return
+    if (!confirm(`¿Eliminar ${selectedIds.size} activo(s) digital(es)?`)) return
     try {
       await bulkDeleteLandings([...selectedIds])
-      toast.success(`${selectedIds.size} branch(es) eliminadas`)
+      toast.success(`${selectedIds.size} activo(s) eliminados`)
       setSelectedIds(new Set())
     } catch { toast.error("Error al eliminar") }
   }
@@ -172,22 +170,22 @@ export default function Dashboard() {
   const handleCreate = async (data) => {
     const landing = await createLanding(data)
     setModalKey((k) => k + 1)
-    addNotification({ title: "Branch Comercial creada", description: `${landing.nombre} — ${landing.url}`, type: "success" })
-    toast.success("Branch Comercial creada exitosamente")
+    addNotification({ title: "Activo Digital creada", description: `${landing.nombre} — ${landing.url}`, type: "success" })
+    toast.success("Activo Digital creada exitosamente")
   }
 
   const handleEdit = async (data) => {
     await updateLanding({ id: modals.editingLanding.id, data })
     modals.setEditingLanding(null)
-    addNotification({ title: "Branch Comercial actualizada", description: `${data.nombre}`, type: "success" })
-    toast.success("Branch Comercial actualizada exitosamente")
+    addNotification({ title: "Activo Digital actualizada", description: `${data.nombre}`, type: "success" })
+    toast.success("Activo Digital actualizada exitosamente")
   }
 
   const handleDelete = async (id) => {
-    if (!confirm("¿Estás seguro de eliminar esta branch comercial?")) return
+    if (!confirm("¿Estás seguro de eliminar esta activo digital?")) return
     await deleteLanding(id)
-    addNotification({ title: "Branch Comercial eliminada", type: "info" })
-    toast.error("Branch Comercial eliminada")
+    addNotification({ title: "Activo Digital eliminada", type: "info" })
+    toast.error("Activo Digital eliminada")
   }
 
   const handleCheckAll = async () => {
@@ -195,10 +193,10 @@ export default function Dashboard() {
       const res = await checkAllLandings()
       const downCount = res?.results?.filter((r) => !r.isUp).length || 0
       if (downCount > 0) {
-        addNotification({ title: `${downCount} branch(es) caída(s)`, description: "Se detectaron branches con problemas", type: "error" })
+        addNotification({ title: `${downCount} activo(s) caído(s)`, description: "Se detectaron activos con problemas", type: "error" })
       }
-      addNotification({ title: "Verificación completa", description: `${res?.checked || 0} branches verificadas`, type: "success" })
-      toast.success(`${res?.checked || 0} branches verificadas`)
+      addNotification({ title: "Verificación completa", description: `${res?.checked || 0} activos verificados`, type: "success" })
+      toast.success(`${res?.checked || 0} activos verificados`)
     } catch {
       toast.error("Error al verificar todas")
     }
@@ -310,7 +308,7 @@ export default function Dashboard() {
               <RefreshCw className={`w-4 h-4 ${isCheckingAll ? "animate-spin" : ""}`} />
               Verificar todas
             </Button>
-            <Button variant="outline" size="sm" onClick={() => api.exportCSV().then(blob => { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `branches-${new Date().toISOString().slice(0,10)}.csv`; a.click() }).catch(() => toast.error("Error al exportar"))}>
+            <Button variant="outline" size="sm" onClick={() => api.exportCSV().then(blob => { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `activos-${new Date().toISOString().slice(0,10)}.csv`; a.click() }).catch(() => toast.error("Error al exportar"))}>
               <Download className="w-4 h-4" />
               CSV
             </Button>
@@ -319,7 +317,7 @@ export default function Dashboard() {
               {dark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
             </Button>
             <BranchFormModal key={modalKey + "-create"} onSubmit={handleCreate}>
-              Nueva Branch Comercial
+              Nuevo Activo Digital
             </BranchFormModal>
           </div>
         </header>
@@ -435,8 +433,8 @@ export default function Dashboard() {
           ) : filteredLandings.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
               <Globe className="w-16 h-16 mb-4 opacity-30" />
-              <p className="text-lg font-medium">No hay branches comerciales</p>
-              <p className="text-sm mt-1">Agregá tu primer branch comercial para empezar</p>
+              <p className="text-lg font-medium">No hay activos digitales</p>
+              <p className="text-sm mt-1">Agregá tu primer activo digital para empezar</p>
             </div>
           ) : (
             <>
@@ -451,38 +449,80 @@ export default function Dashboard() {
                   <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>Limpiar</Button>
                 </div>
               )}
-              <div className="flex items-center gap-2 mb-2">
+              <div className="flex items-center justify-between mb-2">
                 <button onClick={toggleSelectAll} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
                   {selectedIds.size === paginatedLandings.length ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
                   Seleccionar todos
                 </button>
+                <div className="flex items-center gap-1 bg-muted rounded-lg p-0.5">
+                  <button
+                    onClick={() => setViewMode("grid")}
+                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${viewMode === "grid" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <span className="grid grid-cols-2 gap-0.5">
+                        <span className="w-1.5 h-1.5 rounded-sm bg-current" />
+                        <span className="w-1.5 h-1.5 rounded-sm bg-current" />
+                        <span className="w-1.5 h-1.5 rounded-sm bg-current" />
+                        <span className="w-1.5 h-1.5 rounded-sm bg-current" />
+                      </span>
+                      Cards
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => setViewMode("list")}
+                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${viewMode === "list" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <span className="flex flex-col gap-0.5">
+                        <span className="w-3 h-0.5 rounded-sm bg-current" />
+                        <span className="w-3 h-0.5 rounded-sm bg-current" />
+                        <span className="w-3 h-0.5 rounded-sm bg-current" />
+                      </span>
+                      Lista
+                    </span>
+                  </button>
+                </div>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
-                {paginatedLandings.map((landing) => (
-                  <div key={landing.id} className="w-full max-w-[400px] mx-auto sm:mx-0 relative">
-                    <button
-                      onClick={() => toggleSelect(landing.id)}
-                      className="absolute top-2 left-2 z-20 p-1 rounded bg-background/80 backdrop-blur-sm shadow-sm hover:bg-accent transition-colors"
-                    >
-                      {selectedIds.has(landing.id) ? <CheckSquare className="w-4 h-4 text-primary" /> : <Square className="w-4 h-4 text-muted-foreground" />}
-                    </button>
-                    <BranchCard
-                      landing={landing}
-                      onEdit={modals.setEditingLanding}
-                      onDelete={handleDelete}
-                      onCheck={refetch}
-                    />
-                    <div className="mt-1 text-center">
+
+              {viewMode === "grid" ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
+                  {paginatedLandings.map((landing) => (
+                    <div key={landing.id} className="w-full max-w-[400px] mx-auto sm:mx-0 relative">
                       <button
-                        onClick={() => modals.handleViewLogs(landing)}
-                        className="text-xs text-muted-foreground hover:text-primary transition-colors"
+                        onClick={() => toggleSelect(landing.id)}
+                        className="absolute top-2 left-2 z-20 p-1 rounded bg-background/80 backdrop-blur-sm shadow-sm hover:bg-accent transition-colors"
                       >
-                        Ver historial de checks
+                        {selectedIds.has(landing.id) ? <CheckSquare className="w-4 h-4 text-primary" /> : <Square className="w-4 h-4 text-muted-foreground" />}
                       </button>
+                      <BranchCard
+                        landing={landing}
+                        onEdit={modals.setEditingLanding}
+                        onDelete={handleDelete}
+                        onCheck={refetch}
+                      />
+                      <div className="mt-1 text-center">
+                        <button
+                          onClick={() => modals.handleViewLogs(landing)}
+                          className="text-xs text-muted-foreground hover:text-primary transition-colors"
+                        >
+                          Ver historial de checks
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                <BranchTable
+                  landings={paginatedLandings}
+                  selectedIds={selectedIds}
+                  onToggleSelect={toggleSelect}
+                  onToggleSelectAll={toggleSelectAll}
+                  onEdit={modals.setEditingLanding}
+                  onDelete={handleDelete}
+                  onCheck={refetch}
+                />
+              )}
               <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
             </>
           )}
@@ -529,9 +569,9 @@ export default function Dashboard() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-3 sm:p-4" onClick={() => modals.setSslModal(false)}>
           <div className="bg-card rounded-xl p-5 sm:p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto shadow-2xl border" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-lg font-bold mb-1">Estado SSL</h2>
-            <p className="text-sm text-muted-foreground mb-4">Certificados SSL de todas las branches</p>
+            <p className="text-sm text-muted-foreground mb-4">Certificados SSL de todos los activos</p>
             {landings.filter((l) => l.ultimoSslDias !== null).length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-8">Sin datos SSL aún. Verificá alguna branch primero.</p>
+              <p className="text-sm text-muted-foreground text-center py-8">Sin datos SSL aún. Verificá algún activo primero.</p>
             ) : (
               <div className="space-y-2">
                 {[...landings]
@@ -585,7 +625,7 @@ export default function Dashboard() {
                 <input type="checkbox" checked={notifyEmail} onChange={(e) => setNotifyEmail(e.target.checked)} className="w-4 h-4" />
                 <div>
                   <p className="text-sm font-medium">Alertas por email</p>
-                  <p className="text-xs text-muted-foreground">Recibir correo cuando una branch esté caída</p>
+                  <p className="text-xs text-muted-foreground">Recibir correo cuando un activo esté caído</p>
                 </div>
               </label>
               <label className="flex items-center gap-3 cursor-pointer">
@@ -691,16 +731,7 @@ export default function Dashboard() {
       )}
 
       {/* API Keys modal */}
-      {modals.apiKeysOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-3 sm:p-4" onClick={() => modals.setApiKeysOpen(false)}>
-          <div className="bg-card rounded-xl p-5 sm:p-6 w-full max-w-lg max-h-[85vh] overflow-y-auto shadow-2xl border" onClick={(e) => e.stopPropagation()}>
-            <ApiKeyManager />
-            <div className="flex justify-end mt-6 pt-4 border-t">
-              <Button variant="outline" onClick={() => modals.setApiKeysOpen(false)}>Cerrar</Button>
-            </div>
-          </div>
-        </div>
-      )}
+
 
       {/* Categories modal */}
       {modals.categoriesOpen && (

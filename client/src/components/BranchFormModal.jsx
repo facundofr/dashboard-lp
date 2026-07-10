@@ -247,7 +247,7 @@ export default function BranchFormModal({ onSubmit, initialData, onSuccess, onCl
       <DialogTrigger asChild>
         <Button>
           <Plus className="w-4 h-4" />
-          {children || "Nueva Branch Comercial"}
+          {children || "Nuevo Activo Digital"}
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-[800px] max-h-[90vh] overflow-y-auto" onInteractOutside={(e) => e.preventDefault()}>
@@ -264,7 +264,7 @@ export default function BranchFormModal({ onSubmit, initialData, onSuccess, onCl
                 <span className="text-2xl">📋</span>
                 <div>
                   <p className="font-medium">Formulario clásico</p>
-                  <p className="text-xs text-muted-foreground">Todos los campos de Branch Comercial (legacy)</p>
+                  <p className="text-xs text-muted-foreground">Todos los campos (legacy)</p>
                 </div>
               </button>
               {templateTypes.map((type) => (
@@ -293,7 +293,7 @@ export default function BranchFormModal({ onSubmit, initialData, onSuccess, onCl
                   </button>
                 )}
                 <DialogTitle>
-                  {initialData ? "Editar Branch Comercial" : `Nueva ${selectedType?.name || "Branch Comercial"}`}
+                  {initialData ? "Editar Activo Digital" : `Nuevo ${selectedType?.name || "Activo Digital"}`}
                   {selectedType && <span className="ml-2 text-sm font-normal text-muted-foreground">{selectedType.icon} {selectedType.name}</span>}
                 </DialogTitle>
               </div>

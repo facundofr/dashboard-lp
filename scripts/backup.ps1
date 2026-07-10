@@ -1,26 +1,28 @@
 param(
   [string]$BackupDir = "../backups",
-  [string]$DbPath = "../server/prisma/dev.db"
+  [string]$DbUrl = $env:DATABASE_URL
 )
 
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
-$filename = "landings-backup-$timestamp.db"
+$filename = "landings-backup-$timestamp.sql.gz"
 $backupFile = Join-Path $BackupDir $filename
 
 if (-not (Test-Path $BackupDir)) {
   New-Item -ItemType Directory -Path $BackupDir -Force | Out-Null
 }
 
-if (Test-Path $DbPath) {
-  Copy-Item $DbPath $backupFile
-  Write-Host "✅ Backup creado: $backupFile"
-} else {
-  Write-Host "❌ Base de datos no encontrada: $DbPath"
+if (-not $DbUrl) {
+  $DbUrl = "postgresql://landings:landings@localhost:5432/landings?schema=public"
 }
 
-# Limpiar backups viejos (>30 días)
-$oldFiles = Get-ChildItem $BackupDir -Filter "*.db" | Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-30) }
+$env:PGPASSWORD = if ($DbUrl -match 'postgresql://([^:]+):([^@]+)@') { $matches[2] }
+
+& pg_dump $DbUrl --clean --if-exists | & gzip -c > $backupFile
+
+Write-Host "Backup creado: $backupFile"
+
+$oldFiles = Get-ChildItem $BackupDir -Filter "*.sql.gz" | Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-30) }
 foreach ($f in $oldFiles) {
   Remove-Item $f.FullName
-  Write-Host "🗑️ Backup antiguo eliminado: $($f.Name)"
+  Write-Host "Backup antiguo eliminado: $($f.Name)"
 }

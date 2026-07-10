@@ -161,10 +161,6 @@ export const api = {
     return res.blob();
   },
 
-  getApiKeys: () => request('/auth/api-keys'),
-  createApiKey: (data) => request('/auth/api-keys', { method: 'POST', body: JSON.stringify(data) }),
-  deleteApiKey: (id) => request(`/auth/api-keys/${id}`, { method: 'DELETE' }),
-
   updatePlan: (plan) => request('/auth/plan', { method: 'PUT', body: JSON.stringify({ plan }) }),
 
   getStats: () => request('/auth/stats'),

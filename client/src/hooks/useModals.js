@@ -13,7 +13,7 @@ export function useModals() {
   const [sslModal, setSslModal] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
   const [statusPageOpen, setStatusPageOpen] = useState(false)
-  const [apiKeysOpen, setApiKeysOpen] = useState(false)
+
   const [usersOpen, setUsersOpen] = useState(false)
   const [incidentsOpen, setIncidentsOpen] = useState(false)
   const [categoriesOpen, setCategoriesOpen] = useState(false)
@@ -53,7 +53,6 @@ export function useModals() {
     sslModal, setSslModal,
     profileOpen, setProfileOpen,
     statusPageOpen, setStatusPageOpen,
-    apiKeysOpen, setApiKeysOpen,
     usersOpen, setUsersOpen,
     incidentsOpen, setIncidentsOpen,
     categoriesOpen, setCategoriesOpen,

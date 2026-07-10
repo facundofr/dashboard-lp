@@ -2,8 +2,9 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
+const { OAuth2Client } = require('google-auth-library');
 const prisma = require('../lib/prisma');
-const { authMiddleware, checkDisabled, adminMiddleware, apiKeyMiddleware, JWT_SECRET, generateTokens, REFRESH_EXPIRY_DAYS, PLAN_LIMITS } = require('../middleware/auth');
+const { authMiddleware, checkDisabled, adminMiddleware, JWT_SECRET, generateTokens, REFRESH_EXPIRY_DAYS, PLAN_LIMITS } = require('../middleware/auth');
 const { authLimiter } = require('../middleware/rateLimiter');
 const { loginValidation, registerValidation } = require('../middleware/validator');
 const { sendPasswordReset } = require('../lib/mailer');
@@ -53,7 +54,7 @@ router.post('/register', authLimiter, registerValidation, async (req, res) => {
     if (exists) return res.status(400).json({ message: 'El email ya está registrado' });
     const hashed = await bcrypt.hash(password, 10);
     const user = await prisma.user.create({ data: { email, password: hashed, nombre, emailVerificationToken: crypto.randomBytes(32).toString('hex') } });
-    const { accessToken, refreshToken } = generateTokens(user.id, user.email);
+    const { accessToken, refreshToken } = await generateTokens(user.id, user.email);
     res.json({ token: accessToken, refreshToken, user: buildUserResponse(user) });
   } catch (err) {
     logger.error({ err }, 'Error en registro');
@@ -69,7 +70,7 @@ router.post('/login', authLimiter, loginValidation, async (req, res) => {
     if (user.disabled) return res.status(403).json({ message: 'Cuenta deshabilitada. Contactá al administrador.', code: 'ACCOUNT_DISABLED' });
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) return res.status(401).json({ message: 'Credenciales inválidas' });
-    const { accessToken, refreshToken } = generateTokens(user.id, user.email);
+    const { accessToken, refreshToken } = await generateTokens(user.id, user.email);
     res.json({ token: accessToken, refreshToken, user: buildUserResponse(user) });
   } catch (err) {
     logger.error({ err }, 'Error en login');
@@ -77,17 +78,22 @@ router.post('/login', authLimiter, loginValidation, async (req, res) => {
   }
 });
 
+const googleClient = process.env.GOOGLE_CLIENT_ID
+  ? new OAuth2Client(process.env.GOOGLE_CLIENT_ID)
+  : null;
+
 router.post('/oauth/google', async (req, res) => {
   try {
     const { idToken } = req.body;
     if (!idToken) return res.status(400).json({ message: 'idToken requerido' });
-    if (!process.env.GOOGLE_CLIENT_ID) {
+    if (!googleClient) {
       return res.status(501).json({ message: 'OAuth de Google no configurado. Definí GOOGLE_CLIENT_ID en el servidor.' });
     }
-    const payload = JSON.parse(Buffer.from(idToken.split('.')[1], 'base64').toString());
-    if (payload.aud !== process.env.GOOGLE_CLIENT_ID) {
-      return res.status(401).json({ message: 'Token de OAuth inválido' });
-    }
+    const ticket = await googleClient.verifyIdToken({
+      idToken,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+    const payload = ticket.getPayload();
     const user = await upsertUserFromOAuth({
       email: payload.email,
       nombre: payload.name || payload.email,
@@ -95,11 +101,11 @@ router.post('/oauth/google', async (req, res) => {
       provider: 'google',
       providerId: payload.sub,
     });
-    const { accessToken, refreshToken } = generateTokens(user.id, user.email);
+    const { accessToken, refreshToken } = await generateTokens(user.id, user.email);
     res.json({ token: accessToken, refreshToken, user: buildUserResponse(user) });
   } catch (err) {
     logger.error({ err }, 'Error en OAuth Google');
-    res.status(500).json({ message: 'Error del servidor' });
+    res.status(401).json({ message: 'Token de OAuth inválido' });
   }
 });
 
@@ -117,9 +123,12 @@ router.post('/refresh', async (req, res) => {
     }
     const user = await prisma.user.findUnique({ where: { id: decoded.id } });
     if (!user) return res.status(401).json({ message: 'Usuario no encontrado' });
-    const { accessToken } = generateTokens(user.id, user.email);
-    const newRefreshToken = signToken(user, 'refresh', `${REFRESH_EXPIRY_DAYS}d`);
-    res.json({ token: accessToken, refreshToken: newRefreshToken, user: buildUserResponse(user) });
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    if (user.refreshTokenHash && user.refreshTokenHash !== tokenHash) {
+      return res.status(401).json({ message: 'Refresh token ya fue utilizado' });
+    }
+    const newTokens = await generateTokens(user.id, user.email);
+    res.json({ token: newTokens.accessToken, refreshToken: newTokens.refreshToken, user: buildUserResponse(user) });
   } catch (err) {
     logger.error({ err }, 'Error en refresh');
     res.status(500).json({ message: 'Error del servidor' });
@@ -274,54 +283,6 @@ router.put('/profile', authMiddleware, checkDisabled, async (req, res) => {
   }
 });
 
-router.get('/api-keys', authMiddleware, checkDisabled, async (req, res) => {
-  try {
-    const keys = await prisma.apiKey.findMany({
-      where: { userId: req.userId },
-      select: { id: true, name: true, prefix: true, enabled: true, expiresAt: true, lastUsedAt: true, createdAt: true },
-      orderBy: { createdAt: 'desc' },
-    });
-    res.json(keys);
-  } catch (err) {
-    logger.error({ err }, 'Error al listar API keys');
-    res.status(500).json({ message: 'Error del servidor' });
-  }
-});
-
-router.post('/api-keys', authMiddleware, checkDisabled, async (req, res) => {
-  try {
-    const { name, expiresInDays } = req.body;
-    const rawKey = `gl_${crypto.randomBytes(24).toString('hex')}`;
-    const keyHash = crypto.createHash('sha256').update(rawKey).digest('hex');
-    const prefix = rawKey.slice(0, 10);
-    const apiKey = await prisma.apiKey.create({
-      data: {
-        name: name || 'API Key',
-        keyHash,
-        prefix,
-        userId: req.userId,
-        expiresAt: expiresInDays ? new Date(Date.now() + expiresInDays * 86400000) : null,
-      },
-    });
-    res.status(201).json({ id: apiKey.id, name: apiKey.name, key: rawKey, prefix, message: 'Guardá esta key, no se volverá a mostrar' });
-  } catch (err) {
-    logger.error({ err }, 'Error al crear API key');
-    res.status(500).json({ message: 'Error del servidor' });
-  }
-});
-
-router.delete('/api-keys/:id', authMiddleware, checkDisabled, async (req, res) => {
-  try {
-    const existing = await prisma.apiKey.findFirst({ where: { id: parseInt(req.params.id), userId: req.userId } });
-    if (!existing) return res.status(404).json({ message: 'API key no encontrada' });
-    await prisma.apiKey.delete({ where: { id: existing.id } });
-    res.json({ message: 'API key eliminada' });
-  } catch (err) {
-    logger.error({ err }, 'Error al eliminar API key');
-    res.status(500).json({ message: 'Error del servidor' });
-  }
-});
-
 router.put('/plan', authMiddleware, checkDisabled, async (req, res) => {
   try {
     const { plan } = req.body;
@@ -336,11 +297,10 @@ router.put('/plan', authMiddleware, checkDisabled, async (req, res) => {
 
 router.get('/stats', authMiddleware, checkDisabled, async (req, res) => {
   try {
-    const [landingCount, logCount, webhookCount, apiKeyCount] = await Promise.all([
+    const [landingCount, logCount, webhookCount] = await Promise.all([
       prisma.landing.count({ where: { userId: req.userId } }),
       prisma.checkLog.count({ where: { landing: { userId: req.userId } } }),
       prisma.webhookConfig.count({ where: { userId: req.userId } }),
-      prisma.apiKey.count({ where: { userId: req.userId } }),
     ]);
     const user = await prisma.user.findUnique({ where: { id: req.userId } });
     const plan = user?.plan || 'free';
@@ -348,7 +308,6 @@ router.get('/stats', authMiddleware, checkDisabled, async (req, res) => {
       landings: landingCount,
       logs: logCount,
       webhooks: webhookCount,
-      apiKeys: apiKeyCount,
       plan,
       limit: PLAN_LIMITS[plan] ?? PLAN_LIMITS.free,
     });

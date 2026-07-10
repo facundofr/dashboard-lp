@@ -72,7 +72,7 @@ export default function FieldDefinitionEditor({ typeId, fields: initialFields, s
   return (
     <div className="space-y-2">
       <p className="text-xs text-muted-foreground mb-1">
-        Estos son los campos del formulario. Cada campo se puede ocultar con la <strong>X</strong> al crear una branch.
+        Estos son los campos del formulario. Cada campo se puede ocultar con la <strong>X</strong> al crear un activo.
       </p>
 
       <div className="flex items-center gap-2">
