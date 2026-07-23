@@ -9,6 +9,7 @@ services:
       - NODE_ENV=production
       - PORT=3001
       - JWT_SECRET=${JWT_SECRET}
+      - DATABASE_PROVIDER=postgresql
       - DATABASE_URL=postgresql://landings:${POSTGRES_PASSWORD:-landings}@db:5432/landings?schema=public
       - SMTP_HOST=${SMTP_HOST}
       - SMTP_PORT=${SMTP_PORT:-587}
@@ -20,7 +21,6 @@ services:
       - LOG_LEVEL=info
       - FTP_ENCRYPTION_KEY=${FTP_ENCRYPTION_KEY}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
-      - NODE_ENV=production
     depends_on:
       db:
         condition: service_healthy
