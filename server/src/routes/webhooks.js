@@ -59,10 +59,28 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
+function isValidWebhookUrl(url) {
+  try {
+    const parsed = new URL(url);
+    return ['http:', 'https:'].includes(parsed.protocol)
+      && !['localhost', '127.0.0.1', '0.0.0.0', '::1'].includes(parsed.hostname)
+      && !parsed.hostname.startsWith('10.')
+      && !parsed.hostname.startsWith('172.16.')
+      && !parsed.hostname.startsWith('192.168.')
+      && !parsed.hostname.endsWith('.local')
+      && !parsed.hostname.endsWith('.internal');
+  } catch {
+    return false;
+  }
+}
+
 router.post('/test', async (req, res) => {
   try {
     const { url } = req.body;
     if (!url) return res.status(400).json({ message: 'URL requerida' });
+    if (!isValidWebhookUrl(url)) {
+      return res.status(400).json({ message: 'URL inválida. Solo se permiten URLs HTTP/HTTPS públicas.' });
+    }
     const { sendWebhook } = require('../lib/webhook');
     const result = await sendWebhook({ url, secret: null, id: 'test' }, { event: 'test', message: 'Prueba de webhook desde Gestor Landings', timestamp: new Date().toISOString() });
     res.json(result);

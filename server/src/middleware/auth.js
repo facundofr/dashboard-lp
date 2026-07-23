@@ -9,7 +9,7 @@ if (!JWT_SECRET) {
   process.exit(1);
 }
 
-const ACCESS_EXPIRY = '7d';
+const ACCESS_EXPIRY = '1d';
 const REFRESH_EXPIRY_DAYS = 30;
 
 const PLAN_LIMITS = {

@@ -5,7 +5,6 @@ import { Badge } from "./ui/badge"
 import { Button } from "./ui/button"
 import { Card, CardContent, CardFooter, CardHeader } from "./ui/card"
 import { api } from "../lib/api"
-import { useCategories } from "../hooks/useCategories"
 
 const estadoColors = {
   ACTIVO: "bg-green-500",
@@ -31,8 +30,7 @@ function timeAgo(date) {
   return `hace ${days}d`
 }
 
-export default function BranchCard({ landing, onEdit, onDelete, onCheck }) {
-  const { data: categories = [] } = useCategories()
+export default function BranchCard({ landing, onEdit, onDelete, onCheck, categories = [] }) {
   const catColor = categories.find((c) => c.name === landing.categoria)?.color || "from-purple-600 to-pink-600"
   const [checking, setChecking] = useState(false)
   const [checkResult, setCheckResult] = useState(null)

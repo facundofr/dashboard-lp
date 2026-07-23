@@ -20,6 +20,7 @@ services:
       - LOG_LEVEL=info
       - FTP_ENCRYPTION_KEY=${FTP_ENCRYPTION_KEY}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - NODE_ENV=production
     depends_on:
       db:
         condition: service_healthy

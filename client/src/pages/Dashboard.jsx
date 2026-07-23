@@ -500,6 +500,7 @@ export default function Dashboard() {
                         onEdit={modals.setEditingLanding}
                         onDelete={handleDelete}
                         onCheck={refetch}
+                        categories={categories}
                       />
                       <div className="mt-1 text-center">
                         <button

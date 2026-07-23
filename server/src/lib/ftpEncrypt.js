@@ -1,10 +1,14 @@
 const crypto = require('crypto-js');
+const { logger } = require('./logger');
 
 function getKey() {
-  const key = process.env.FTP_ENCRYPTION_KEY || process.env.JWT_SECRET;
+  const key = process.env.FTP_ENCRYPTION_KEY;
   if (!key) {
-    console.warn('[FTP] No hay clave de cifrado configurada. Las contraseñas FTP se almacenarán en texto plano.');
+    logger.warn('[FTP] FTP_ENCRYPTION_KEY no configurada. Las contraseñas FTP se almacenarán en texto plano.');
     return null;
+  }
+  if (key === process.env.JWT_SECRET) {
+    logger.warn('[FTP] FTP_ENCRYPTION_KEY no debe ser igual a JWT_SECRET. Usá una clave diferente.');
   }
   return key;
 }

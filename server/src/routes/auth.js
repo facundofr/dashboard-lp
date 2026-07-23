@@ -109,24 +109,24 @@ router.post('/oauth/google', async (req, res) => {
   }
 });
 
-router.post('/refresh', async (req, res) => {
+router.post('/refresh', authLimiter, async (req, res) => {
   try {
     const { refreshToken } = req.body;
-    const token = refreshToken || (req.headers.authorization && req.headers.authorization.startsWith('Bearer ') && req.headers.authorization.split(' ')[1]);
-    if (!token) return res.status(401).json({ message: 'Refresh token requerido' });
+    if (!refreshToken) return res.status(401).json({ message: 'Refresh token requerido' });
     let decoded;
     try {
-      decoded = jwt.verify(token, JWT_SECRET);
+      decoded = jwt.verify(refreshToken, JWT_SECRET);
       if (decoded.type !== 'refresh') throw new Error('wrong type');
     } catch {
       return res.status(401).json({ message: 'Refresh token inválido o expirado' });
     }
     const user = await prisma.user.findUnique({ where: { id: decoded.id } });
     if (!user) return res.status(401).json({ message: 'Usuario no encontrado' });
-    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
     if (user.refreshTokenHash && user.refreshTokenHash !== tokenHash) {
       return res.status(401).json({ message: 'Refresh token ya fue utilizado' });
     }
+    await prisma.user.update({ where: { id: user.id }, data: { refreshTokenHash: null } });
     const newTokens = await generateTokens(user.id, user.email);
     res.json({ token: newTokens.accessToken, refreshToken: newTokens.refreshToken, user: buildUserResponse(user) });
   } catch (err) {

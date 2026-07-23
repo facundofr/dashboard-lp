@@ -24,9 +24,24 @@ const templateTypeRoutes = require('./routes/templateTypes');
 const app = express();
 const PORT = process.env.PORT || 3001;
 const corsOrigin = process.env.CORS_ORIGIN || 'http://localhost:5173';
+const isProduction = process.env.NODE_ENV === 'production';
 
 const allowedOrigins = corsOrigin.split(',').map((o) => o.trim());
-app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' }, contentSecurityPolicy: false }));
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  contentSecurityPolicy: isProduction ? {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'", ...allowedOrigins],
+      fontSrc: ["'self'", "https:"],
+      objectSrc: ["'none'"],
+      frameAncestors: ["'none'"],
+    },
+  } : false,
+}));
 app.use(compression());
 app.use(cors({
   origin: (origin, cb) => {
@@ -38,7 +53,7 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '10mb' }));
 
-app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
+app.use('/uploads', express.static(path.join(__dirname, '..', '..', 'uploads')));
 app.use('/api', apiLimiter);
 
 app.use('/api/health', healthRoutes);
@@ -67,7 +82,25 @@ const server = app.listen(PORT, () => {
   setTimeout(autoCheckAll, 30000);
 });
 
-setInterval(autoCheckAll, 15 * 60 * 1000);
+let checkInterval = setInterval(autoCheckAll, 15 * 60 * 1000);
+
+async function cleanup() {
+  logger.info('Apagando servidor...');
+  clearInterval(checkInterval);
+  try {
+    const daysRetention = 90;
+    const cutoff = new Date(Date.now() - daysRetention * 24 * 60 * 60 * 1000);
+    const deleted = await prisma.checkLog.deleteMany({ where: { createdAt: { lt: cutoff } } });
+    if (deleted.count > 0) logger.info({ deleted: deleted.count }, `Limpieza de logs anteriores a ${daysRetention} días`);
+  } catch (err) {
+    logger.warn({ err: err.message }, 'Error en limpieza de logs');
+  }
+  await prisma.$disconnect();
+  server.close(() => process.exit(0));
+}
+
+process.on('SIGTERM', cleanup);
+process.on('SIGINT', cleanup);
 
 async function autoCheckAll() {
   try {
