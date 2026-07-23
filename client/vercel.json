@@ -1,6 +1,6 @@
 {
   "rewrites": [
-    { "source": "/api/:path*", "destination": "http://IP_DEL_VPS:3001/api/:path*" },
+    { "source": "/api/:path*", "destination": "http://72.60.138.104:3001/api/:path*" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
