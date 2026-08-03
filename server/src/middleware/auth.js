@@ -63,6 +63,18 @@ async function checkDisabled(req, res, next) {
   }
 }
 
+async function checkApproved(req, res, next) {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.userId }, select: { approved: true } });
+    if (user && user.approved === false) {
+      return res.status(403).json({ message: 'Tu cuenta está pendiente de validación por un administrador.', code: 'PENDING_APPROVAL' });
+    }
+    next();
+  } catch {
+    next();
+  }
+}
+
 function optionalAuth(req, res, next) {
   const header = req.headers.authorization;
   if (header && header.startsWith('Bearer ')) {
@@ -93,34 +105,12 @@ async function adminMiddleware(req, res, next) {
   }
 }
 
-async function planMiddleware(req, res, next) {
-  try {
-    const user = await prisma.user.findUnique({ where: { id: req.userId } });
-    const plan = user?.plan || 'free';
-    const limit = PLAN_LIMITS[plan] ?? PLAN_LIMITS.free;
-    const count = await prisma.landing.count({ where: { userId: req.userId } });
-    if (count >= limit) {
-      return res.status(403).json({
-        message: `Límite del plan ${plan} alcanzado (${limit} landings). Actualizá tu plan para agregar más.`,
-        code: 'PLAN_LIMIT',
-        plan,
-        limit,
-        current: count,
-      });
-    }
-    next();
-  } catch (err) {
-    logger.error({ err }, 'Error en planMiddleware');
-    next();
-  }
-}
-
 module.exports = {
   authMiddleware,
   checkDisabled,
+  checkApproved,
   optionalAuth,
   adminMiddleware,
-  planMiddleware,
   PLAN_LIMITS,
   JWT_SECRET,
   generateTokens,

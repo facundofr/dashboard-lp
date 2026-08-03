@@ -1,6 +1,6 @@
 const express = require('express');
 const prisma = require('../lib/prisma');
-const { authMiddleware, checkDisabled, planMiddleware } = require('../middleware/auth');
+const { authMiddleware, checkDisabled, checkApproved } = require('../middleware/auth');
 const { checkUrl, checkSsl, scanMetaTags } = require('../lib/checker');
 const { logAudit } = require('../lib/audit');
 const { processCheckResult } = require('../lib/incidentHelper');
@@ -10,7 +10,7 @@ const { logger } = require('../lib/logger');
 
 const router = express.Router();
 
-router.use(authMiddleware, checkDisabled);
+router.use(authMiddleware, checkDisabled, checkApproved);
 
 router.get('/', async (req, res) => {
   try {
@@ -18,7 +18,7 @@ router.get('/', async (req, res) => {
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
     const search = req.query.search || '';
 
-    const where = { userId: req.userId };
+    const where = {};
     if (search) {
       where.OR = [
         { nombre: { contains: search } },
@@ -56,7 +56,7 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const landing = await prisma.landing.findFirst({
-      where: { id: parseInt(req.params.id), userId: req.userId },
+      where: { id: parseInt(req.params.id) },
       include: { logs: { orderBy: { createdAt: 'desc' }, take: 20 }, templateType: true },
     });
     if (!landing) return res.status(404).json({ message: 'Landing no encontrada' });
@@ -70,7 +70,7 @@ router.get('/:id', async (req, res) => {
 router.get('/:id/logs', async (req, res) => {
   try {
     const landing = await prisma.landing.findFirst({
-      where: { id: parseInt(req.params.id), userId: req.userId },
+      where: { id: parseInt(req.params.id) },
     });
     if (!landing) return res.status(404).json({ message: 'Landing no encontrada' });
     const logs = await prisma.checkLog.findMany({
@@ -85,7 +85,7 @@ router.get('/:id/logs', async (req, res) => {
   }
 });
 
-router.post('/', landingValidation, planMiddleware, async (req, res) => {
+router.post('/', landingValidation, async (req, res) => {
   try {
     const { nombre, marca, url, estado, categoria, templateTypeId, dynamicValues, visibleFields, ftpHost, ftpUser, ftpPass, ftpPath, tecnologias, notas, imagenUrl, sheetUrl, formStatus, tags, cliente } = req.body;
     const landing = await prisma.landing.create({
@@ -109,7 +109,7 @@ router.post('/', landingValidation, planMiddleware, async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const existing = await prisma.landing.findFirst({
-      where: { id: parseInt(req.params.id), userId: req.userId },
+      where: { id: parseInt(req.params.id) },
     });
     if (!existing) return res.status(404).json({ message: 'Landing no encontrada' });
 
@@ -134,7 +134,7 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     const existing = await prisma.landing.findFirst({
-      where: { id: parseInt(req.params.id), userId: req.userId },
+      where: { id: parseInt(req.params.id) },
     });
     if (!existing) return res.status(404).json({ message: 'Landing no encontrada' });
 
@@ -150,7 +150,7 @@ router.delete('/:id', async (req, res) => {
 router.post('/:id/check', async (req, res) => {
   try {
     const landing = await prisma.landing.findFirst({
-      where: { id: parseInt(req.params.id), userId: req.userId },
+      where: { id: parseInt(req.params.id) },
     });
     if (!landing) return res.status(404).json({ message: 'Landing no encontrada' });
 
@@ -202,7 +202,7 @@ router.post('/:id/check', async (req, res) => {
 router.post('/:id/deploy', async (req, res) => {
   try {
     const existing = await prisma.landing.findFirst({
-      where: { id: parseInt(req.params.id), userId: req.userId },
+      where: { id: parseInt(req.params.id) },
     });
     if (!existing) return res.status(404).json({ message: 'Landing no encontrada' });
     const landing = await prisma.landing.update({
@@ -220,7 +220,6 @@ router.post('/:id/deploy', async (req, res) => {
 router.get('/audit/all', async (req, res) => {
   try {
     const logs = await prisma.auditLog.findMany({
-      where: { userId: req.userId },
       orderBy: { createdAt: 'desc' },
       take: 100,
     });
@@ -235,7 +234,6 @@ router.post('/check-all', async (req, res) => {
   try {
     const landings = await prisma.landing.findMany({
       where: {
-        userId: req.userId,
         OR: [
           { templateTypeId: null },
           { templateType: { hasMonitoring: true } },
@@ -278,7 +276,7 @@ router.post('/bulk/check', async (req, res) => {
     const { ids } = req.body;
     if (!ids || !Array.isArray(ids)) return res.status(400).json({ message: 'IDs requeridos' });
     const landings = await prisma.landing.findMany({
-      where: { id: { in: ids.map((id) => parseInt(id)) }, userId: req.userId },
+      where: { id: { in: ids.map((id) => parseInt(id)) } },
     });
     const results = [];
     const CONCURRENCY = 10;
@@ -311,7 +309,7 @@ router.post('/bulk/delete', async (req, res) => {
     const { ids } = req.body;
     if (!ids || !Array.isArray(ids)) return res.status(400).json({ message: 'IDs requeridos' });
     const landings = await prisma.landing.findMany({
-      where: { id: { in: ids.map((id) => parseInt(id)) }, userId: req.userId },
+      where: { id: { in: ids.map((id) => parseInt(id)) } },
       select: { id: true },
     });
     if (landings.length === 0) return res.json({ deleted: 0 });
@@ -328,7 +326,7 @@ router.post('/bulk/delete', async (req, res) => {
 
 router.get('/export/csv', async (req, res) => {
   try {
-    const landings = await prisma.landing.findMany({ where: { userId: req.userId }, orderBy: { createdAt: 'desc' } });
+    const landings = await prisma.landing.findMany({ orderBy: { createdAt: 'desc' } });
     const headers = ['Nombre', 'Marca', 'URL', 'Estado', 'Categoría', 'Tags', 'Último Status', 'Código', 'Tiempo (ms)', 'SSL (días)', 'Form Status', 'Tecnologías', 'Cliente'];
     const rows = landings.map((l) => [
       l.nombre, l.marca, l.url, l.estado, l.categoria, l.tags || '',

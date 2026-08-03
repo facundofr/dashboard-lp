@@ -9,6 +9,7 @@ import { lazy, Suspense } from "react";
 import Login from "./pages/Login";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
+import PendingApproval from "./pages/PendingApproval";
 
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const StatusPage = lazy(() => import("./pages/StatusPage"));
@@ -28,6 +29,10 @@ function AppRoutes() {
       </div>
     );
   }
+  const protectedElement = user
+    ? (user.approved === false ? <PendingApproval /> : <Suspense fallback={null}><Dashboard /></Suspense>)
+    : <Navigate to="/login" replace />;
+
   return (
     <Routes>
       <Route path="/" element={user ? <Navigate to="/dashboard" replace /> : <Navigate to="/login" replace />} />
@@ -39,8 +44,8 @@ function AppRoutes() {
           <StatusPage />
         </Suspense>
       } />
-      <Route path="/dashboard/*" element={user ? <Suspense fallback={null}><Dashboard /></Suspense> : <Navigate to="/login" replace />} />
-      <Route path="/*" element={user ? <Suspense fallback={null}><Dashboard /></Suspense> : <Navigate to="/login" replace />} />
+      <Route path="/dashboard/*" element={protectedElement} />
+      <Route path="/*" element={protectedElement} />
     </Routes>
   );
 }

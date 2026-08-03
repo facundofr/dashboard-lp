@@ -87,9 +87,9 @@ router.get('/:slug/uptime/:landingId', async (req, res) => {
   }
 });
 
-const { authMiddleware, checkDisabled } = require('../middleware/auth');
+const { authMiddleware, checkDisabled, checkApproved } = require('../middleware/auth');
 
-router.get('/me', authMiddleware, checkDisabled, async (req, res) => {
+router.get('/me', authMiddleware, checkDisabled, checkApproved, async (req, res) => {
   try {
     let page = await prisma.statusPage.findUnique({ where: { userId: req.userId } });
     if (!page) {
@@ -109,7 +109,7 @@ router.get('/me', authMiddleware, checkDisabled, async (req, res) => {
   }
 });
 
-router.put('/me', authMiddleware, checkDisabled, async (req, res) => {
+router.put('/me', authMiddleware, checkDisabled, checkApproved, async (req, res) => {
   try {
     const { title, subtitle, logoUrl, brandColor, isPublic } = req.body;
     let page = await prisma.statusPage.findUnique({ where: { userId: req.userId } });
@@ -130,7 +130,7 @@ router.put('/me', authMiddleware, checkDisabled, async (req, res) => {
   }
 });
 
-router.put('/me/slug', authMiddleware, checkDisabled, async (req, res) => {
+router.put('/me/slug', authMiddleware, checkDisabled, checkApproved, async (req, res) => {
   try {
     const { slug } = req.body;
     if (!slug) return res.status(400).json({ message: 'Slug requerido' });

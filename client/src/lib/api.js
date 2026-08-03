@@ -145,6 +145,7 @@ export const api = {
   getUsers: () => request('/auth/users'),
   updateUserRole: (id, role) => request(`/auth/users/${id}/role`, { method: 'PUT', body: JSON.stringify({ role }) }),
   toggleUserStatus: (id) => request(`/auth/users/${id}/toggle-status`, { method: 'PUT' }),
+  approveUser: (id) => request(`/auth/users/${id}/approve`, { method: 'PUT' }),
   deleteUser: (id) => request(`/auth/users/${id}`, { method: 'DELETE' }),
 
   updateProfile: (data) => request('/auth/profile', { method: 'PUT', body: JSON.stringify(data) }),

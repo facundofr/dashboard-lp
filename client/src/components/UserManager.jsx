@@ -50,6 +50,15 @@ export default function UserManager({ onClose }) {
     } catch { toast.error("Error al eliminar usuario") }
   }
 
+  const handleApprove = async (id, email) => {
+    if (!confirm(`¿Autorizar el ingreso de ${email}?`)) return
+    try {
+      await api.approveUser(id)
+      toast.success("Usuario autorizado")
+      fetchUsers()
+    } catch { toast.error("Error al autorizar usuario") }
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
@@ -71,6 +80,7 @@ export default function UserManager({ onClose }) {
                 <th className="text-left py-2 px-2">Nombre</th>
                 <th className="text-center py-2 px-2">Rol</th>
                 <th className="text-center py-2 px-2">Estado</th>
+                <th className="text-center py-2 px-2">Validación</th>
                 <th className="text-center py-2 px-2">Plan</th>
                 <th className="text-right py-2 pl-2">Acciones</th>
               </tr>
@@ -90,9 +100,19 @@ export default function UserManager({ onClose }) {
                       {u.disabled ? "Inactivo" : "Activo"}
                     </span>
                   </td>
+                  <td className="py-2 px-2 text-center">
+                    <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${u.approved ? "text-green-600" : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"}`}>
+                      {u.approved ? "Aprobado" : "Pendiente"}
+                    </span>
+                  </td>
                   <td className="py-2 px-2 text-center text-xs text-muted-foreground">{u.plan}</td>
                   <td className="py-2 pl-2 text-right">
                     <div className="flex gap-1 justify-end">
+                      {!u.approved && (
+                        <Button size="sm" className="h-7 text-xs" onClick={() => handleApprove(u.id, u.email)}>
+                          Autorizar
+                        </Button>
+                      )}
                       <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => handleChangeRole(u.id, u.role)}>
                         {u.role === "admin" ? "Hacer user" : "Hacer admin"}
                       </Button>

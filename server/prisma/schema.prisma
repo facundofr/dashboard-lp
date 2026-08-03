@@ -23,6 +23,7 @@ model User {
   resetPasswordExpires  DateTime?
   refreshTokenHash      String?
   disabled              Boolean   @default(false)
+  approved              Boolean   @default(true)
   provider              String?
   providerId            String?
   createdAt             DateTime  @default(now())

@@ -4,11 +4,11 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const { fileTypeFromFile } = require('file-type');
-const { authMiddleware, checkDisabled } = require('../middleware/auth');
+const { authMiddleware, checkDisabled, checkApproved } = require('../middleware/auth');
 const { logger } = require('../lib/logger');
 
 const router = express.Router();
-router.use(authMiddleware, checkDisabled);
+router.use(authMiddleware, checkDisabled, checkApproved);
 
 const uploadDir = path.join(__dirname, '..', '..', 'uploads');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });

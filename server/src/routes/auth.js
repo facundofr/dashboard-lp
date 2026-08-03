@@ -4,10 +4,11 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { OAuth2Client } = require('google-auth-library');
 const prisma = require('../lib/prisma');
-const { authMiddleware, checkDisabled, adminMiddleware, JWT_SECRET, generateTokens, REFRESH_EXPIRY_DAYS, PLAN_LIMITS } = require('../middleware/auth');
+const { authMiddleware, checkDisabled, checkApproved, adminMiddleware, JWT_SECRET, generateTokens, REFRESH_EXPIRY_DAYS, PLAN_LIMITS } = require('../middleware/auth');
 const { authLimiter } = require('../middleware/rateLimiter');
 const { loginValidation, registerValidation } = require('../middleware/validator');
 const { sendPasswordReset } = require('../lib/mailer');
+const { logAudit } = require('../lib/audit');
 const { logger } = require('../lib/logger');
 
 const router = express.Router();
@@ -23,6 +24,7 @@ function buildUserResponse(user) {
     sendSslAlerts: user.sendSslAlerts,
     avatarUrl: user.avatarUrl,
     disabled: user.disabled,
+    approved: user.approved,
   };
 }
 
@@ -43,6 +45,7 @@ async function upsertUserFromOAuth({ email, nombre, avatarUrl, provider, provide
       email, nombre, password: crypto.randomBytes(32).toString('hex'),
       provider, providerId, avatarUrl,
       emailVerified: true,
+      approved: false,
     },
   });
 }
@@ -53,7 +56,7 @@ router.post('/register', authLimiter, registerValidation, async (req, res) => {
     const exists = await prisma.user.findUnique({ where: { email } });
     if (exists) return res.status(400).json({ message: 'El email ya está registrado' });
     const hashed = await bcrypt.hash(password, 10);
-    const user = await prisma.user.create({ data: { email, password: hashed, nombre, emailVerificationToken: crypto.randomBytes(32).toString('hex') } });
+    const user = await prisma.user.create({ data: { email, password: hashed, nombre, emailVerificationToken: crypto.randomBytes(32).toString('hex'), approved: false } });
     const { accessToken, refreshToken } = await generateTokens(user.id, user.email);
     res.json({ token: accessToken, refreshToken, user: buildUserResponse(user) });
   } catch (err) {
@@ -206,7 +209,7 @@ router.post('/reset-password', authLimiter, async (req, res) => {
 
 router.get('/users', authMiddleware, checkDisabled, adminMiddleware, async (req, res) => {
   try {
-    const users = await prisma.user.findMany({ select: { id: true, email: true, nombre: true, role: true, plan: true, disabled: true, createdAt: true } });
+    const users = await prisma.user.findMany({ select: { id: true, email: true, nombre: true, role: true, plan: true, disabled: true, approved: true, createdAt: true } });
     res.json(users);
   } catch (err) {
     logger.error({ err }, 'Error al listar usuarios');
@@ -218,10 +221,28 @@ router.put('/users/:id/role', authMiddleware, checkDisabled, adminMiddleware, as
   try {
     const { role } = req.body;
     if (!['user', 'admin'].includes(role)) return res.status(400).json({ message: 'Rol inválido' });
-    const user = await prisma.user.update({ where: { id: parseInt(req.params.id) }, data: { role } });
+    const targetId = parseInt(req.params.id);
+    if (targetId === req.userId && role !== 'admin') {
+      return res.status(400).json({ message: 'No podés quitarte tu propio rol de admin' });
+    }
+    const user = await prisma.user.update({ where: { id: targetId }, data: { role } });
+    await logAudit({ userId: req.userId, landingId: null, action: 'ROLE_CHANGE', details: { targetUserId: user.id, targetEmail: user.email, newRole: role } });
     res.json({ id: user.id, email: user.email, nombre: user.nombre, role: user.role });
   } catch (err) {
     logger.error({ err }, 'Error al actualizar rol');
+    res.status(500).json({ message: 'Error del servidor' });
+  }
+});
+
+router.put('/users/:id/approve', authMiddleware, checkDisabled, adminMiddleware, async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: parseInt(req.params.id) } });
+    if (!user) return res.status(404).json({ message: 'Usuario no encontrado' });
+    const updated = await prisma.user.update({ where: { id: user.id }, data: { approved: true } });
+    await logAudit({ userId: req.userId, landingId: null, action: 'USER_APPROVED', details: { targetUserId: updated.id, targetEmail: updated.email } });
+    res.json({ id: updated.id, email: updated.email, nombre: updated.nombre, approved: updated.approved });
+  } catch (err) {
+    logger.error({ err }, 'Error al autorizar usuario');
     res.status(500).json({ message: 'Error del servidor' });
   }
 });
@@ -252,7 +273,7 @@ router.delete('/users/:id', authMiddleware, checkDisabled, adminMiddleware, asyn
   }
 });
 
-router.put('/profile', authMiddleware, checkDisabled, async (req, res) => {
+router.put('/profile', authMiddleware, checkDisabled, checkApproved, async (req, res) => {
   try {
     const { nombre, email, currentPassword, newPassword } = req.body;
     const user = await prisma.user.findUnique({ where: { id: req.userId } });
@@ -283,7 +304,7 @@ router.put('/profile', authMiddleware, checkDisabled, async (req, res) => {
   }
 });
 
-router.put('/plan', authMiddleware, checkDisabled, async (req, res) => {
+router.put('/plan', authMiddleware, checkDisabled, checkApproved, async (req, res) => {
   try {
     const { plan } = req.body;
     if (!PLAN_LIMITS[plan]) return res.status(400).json({ message: 'Plan inválido', available: Object.keys(PLAN_LIMITS) });
@@ -295,12 +316,12 @@ router.put('/plan', authMiddleware, checkDisabled, async (req, res) => {
   }
 });
 
-router.get('/stats', authMiddleware, checkDisabled, async (req, res) => {
+router.get('/stats', authMiddleware, checkDisabled, checkApproved, async (req, res) => {
   try {
     const [landingCount, logCount, webhookCount] = await Promise.all([
-      prisma.landing.count({ where: { userId: req.userId } }),
-      prisma.checkLog.count({ where: { landing: { userId: req.userId } } }),
-      prisma.webhookConfig.count({ where: { userId: req.userId } }),
+      prisma.landing.count(),
+      prisma.checkLog.count(),
+      prisma.webhookConfig.count(),
     ]);
     const user = await prisma.user.findUnique({ where: { id: req.userId } });
     const plan = user?.plan || 'free';

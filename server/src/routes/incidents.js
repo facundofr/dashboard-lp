@@ -1,16 +1,15 @@
 const express = require('express');
 const prisma = require('../lib/prisma');
-const { authMiddleware, checkDisabled } = require('../middleware/auth');
+const { authMiddleware, checkDisabled, checkApproved } = require('../middleware/auth');
 const { logger } = require('../lib/logger');
 
 const router = express.Router();
-router.use(authMiddleware, checkDisabled);
+router.use(authMiddleware, checkDisabled, checkApproved);
 
 router.get('/', async (req, res) => {
   try {
     const incidents = await prisma.incident.findMany({
       where: {
-        landing: { userId: req.userId },
         recoveredAt: null,
       },
       include: { landing: { select: { id: true, nombre: true, marca: true, url: true } } },
@@ -30,7 +29,6 @@ router.get('/history', async (req, res) => {
     const [incidents, total] = await Promise.all([
       prisma.incident.findMany({
         where: {
-          landing: { userId: req.userId },
           recoveredAt: { not: null },
         },
         include: { landing: { select: { id: true, nombre: true, marca: true, url: true } } },
@@ -40,7 +38,6 @@ router.get('/history', async (req, res) => {
       }),
       prisma.incident.count({
         where: {
-          landing: { userId: req.userId },
           recoveredAt: { not: null },
         },
       }),
@@ -58,7 +55,7 @@ router.get('/history', async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const incident = await prisma.incident.findFirst({
-      where: { id: parseInt(req.params.id), landing: { userId: req.userId } },
+      where: { id: parseInt(req.params.id) },
       include: {
         landing: {
           select: { id: true, nombre: true, marca: true, url: true, ultimoStatus: true },
@@ -76,7 +73,7 @@ router.get('/:id', async (req, res) => {
 router.put('/:id/acknowledge', async (req, res) => {
   try {
     const incident = await prisma.incident.findFirst({
-      where: { id: parseInt(req.params.id), landing: { userId: req.userId } },
+      where: { id: parseInt(req.params.id) },
     });
     if (!incident) return res.status(404).json({ message: 'Incidente no encontrado' });
     const updated = await prisma.incident.update({
