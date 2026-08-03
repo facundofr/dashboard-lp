@@ -27,6 +27,10 @@ const corsOrigin = process.env.CORS_ORIGIN || 'http://localhost:5173';
 const isProduction = process.env.NODE_ENV === 'production';
 
 const allowedOrigins = corsOrigin.split(',').map((o) => o.trim());
+
+// Detrás de nginx / proxy de Vercel: sin esto el rate limiter ve una sola IP para todos.
+app.set('trust proxy', 1);
+
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
   contentSecurityPolicy: isProduction ? {
@@ -53,7 +57,7 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '10mb' }));
 
-app.use('/uploads', express.static(path.join(__dirname, '..', '..', 'uploads')));
+app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 app.use('/api', apiLimiter);
 
 app.use('/api/health', healthRoutes);

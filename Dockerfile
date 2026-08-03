@@ -24,4 +24,4 @@ RUN chown -R app:app /app
 USER app
 EXPOSE 3001
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 CMD wget --no-verbose --tries=1 --spider http://localhost:3001/api/health || exit 1
-ENTRYPOINT ["sh", "-c", "npx prisma db push && node server/src/index.js"]
+ENTRYPOINT ["sh", "-c", "cd server && npx prisma db push && node src/index.js"]
