@@ -18,6 +18,7 @@ import WebhookSettings from "../components/WebhookSettings"
 import UserManager from "../components/UserManager"
 import OnboardingChecklist from "../components/OnboardingChecklist"
 import CategoryManager from "../components/CategoryManager"
+import CategoryPicker from "../components/CategoryPicker"
 import TemplateTypeManager from "../components/TemplateTypeManager"
 import { Button } from "../components/ui/button"
 import { Input } from "../components/ui/input"
@@ -74,7 +75,8 @@ export default function Dashboard() {
     loading, stats, tags, refetch,
     createLanding, updateLanding, deleteLanding,
     checkAllLandings, bulkCheckLandings, bulkDeleteLandings,
-    isCheckingAll, isBulkChecking,
+    setLandingCategoria, bulkSetCategoria,
+    isCheckingAll, isBulkChecking, isSettingCategoria,
   } = useLandings({ search, activeCategoria, activeStatus, activeUptime, activeTag, currentPage })
 
   const modals = useModals()
@@ -145,6 +147,24 @@ export default function Dashboard() {
       toast.success(`${selectedIds.size} activos verificados`)
       setSelectedIds(new Set())
     } catch { toast.error("Error en verificación masiva") }
+  }
+
+  const handleCategoryChange = async (id, categoria) => {
+    try {
+      await setLandingCategoria(id, categoria)
+    } catch {
+      // el toast de error lo dispara la mutación
+    }
+  }
+
+  const handleBulkCategoryChange = async (categoria) => {
+    if (selectedIds.size === 0) return
+    try {
+      await bulkSetCategoria([...selectedIds], categoria)
+      setSelectedIds(new Set())
+    } catch {
+      // el toast de error lo dispara la mutación
+    }
   }
 
   const handleBulkDelete = async () => {
@@ -356,10 +376,18 @@ export default function Dashboard() {
 
         {/* Category filter */}
         <div className="flex gap-1.5 px-3 sm:px-4 md:px-6 pt-3 overflow-x-auto scrollbar-none">
+          <button
+            onClick={() => { setActiveCategoria(null); setCurrentPage(1) }}
+            className={`px-3 py-1.5 text-xs sm:text-sm rounded-lg font-medium transition-colors whitespace-nowrap ${
+              !activeCategoria ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-accent"
+            }`}
+          >
+            Todas
+          </button>
           {categories.map((cat) => (
             <button
               key={cat.name}
-              onClick={() => setActiveCategoria(activeCategoria === cat.name ? null : cat.name)}
+              onClick={() => { setActiveCategoria(activeCategoria === cat.name ? null : cat.name); setCurrentPage(1) }}
               className={`flex items-center gap-1.5 px-3 py-1.5 text-xs sm:text-sm rounded-lg font-medium transition-colors whitespace-nowrap ${
                 activeCategoria === cat.name
                   ? "bg-gradient-to-br text-white shadow-md"
@@ -368,6 +396,9 @@ export default function Dashboard() {
             >
               <span className={`w-2 h-2 rounded-full bg-gradient-to-br ${cat.color}`} />
               {cat.name}
+              {cat.landingsCount > 0 && (
+                <span className="opacity-60 tabular-nums">{cat.landingsCount}</span>
+              )}
             </button>
           ))}
         </div>
@@ -439,12 +470,23 @@ export default function Dashboard() {
           ) : (
             <>
               {selectedIds.size > 0 && (
-                <div className="flex items-center gap-2 mb-3 p-2 bg-muted rounded-lg text-sm">
+                <div className="flex flex-wrap items-center gap-2 mb-3 p-2 bg-muted rounded-lg text-sm">
                   <span className="font-medium">{selectedIds.size} seleccionada(s)</span>
                   <Button variant="outline" size="sm" onClick={handleBulkCheck} disabled={isBulkChecking}>
                     <RefreshCw className={`w-3 h-3 ${isBulkChecking ? "animate-spin" : ""}`} />
                     Verificar
                   </Button>
+                  <div className="flex items-center gap-1.5">
+                    <Tags className="w-3.5 h-3.5 text-muted-foreground" />
+                    <CategoryPicker
+                      value=""
+                      onChange={handleBulkCategoryChange}
+                      categories={categories}
+                      disabled={isSettingCategoria}
+                      placeholder="Asignar categoría"
+                      triggerClassName="h-8 w-48 text-xs bg-background"
+                    />
+                  </div>
                   <Button variant="destructive" size="sm" onClick={handleBulkDelete}>Eliminar</Button>
                   <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>Limpiar</Button>
                 </div>
@@ -500,6 +542,7 @@ export default function Dashboard() {
                         onEdit={modals.setEditingLanding}
                         onDelete={handleDelete}
                         onCheck={refetch}
+                        onCategoryChange={handleCategoryChange}
                         categories={categories}
                       />
                       <div className="mt-1 text-center">
@@ -522,6 +565,8 @@ export default function Dashboard() {
                   onEdit={modals.setEditingLanding}
                   onDelete={handleDelete}
                   onCheck={refetch}
+                  onCategoryChange={handleCategoryChange}
+                  categories={categories}
                 />
               )}
               <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />

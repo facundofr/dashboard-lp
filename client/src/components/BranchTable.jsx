@@ -3,6 +3,7 @@ import { ExternalLink, Pencil, Trash2, RefreshCw, Rocket, CheckSquare, Square } 
 import { Badge } from "./ui/badge"
 import { Button } from "./ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table"
+import CategoryPicker from "./CategoryPicker"
 import { api } from "../lib/api"
 
 const estadoColors = {
@@ -23,7 +24,7 @@ function timeAgo(date) {
   return `hace ${days}d`
 }
 
-export default function BranchTable({ landings, selectedIds, onToggleSelect, onToggleSelectAll, onEdit, onDelete }) {
+export default function BranchTable({ landings, selectedIds, onToggleSelect, onToggleSelectAll, onEdit, onDelete, onCategoryChange, categories = [] }) {
   const [checking, setChecking] = useState(null)
   const [deploying, setDeploying] = useState(null)
   const [checkResults, setCheckResults] = useState({})
@@ -79,7 +80,7 @@ export default function BranchTable({ landings, selectedIds, onToggleSelect, onT
             </TableHead>
             <TableHead>Nombre</TableHead>
             <TableHead className="hidden md:table-cell">URL</TableHead>
-            <TableHead className="hidden sm:table-cell">Estado</TableHead>
+            <TableHead className="hidden sm:table-cell w-44">Categoría</TableHead>
             <TableHead className="hidden lg:table-cell">Uptime</TableHead>
             <TableHead className="hidden lg:table-cell">SSL</TableHead>
             <TableHead className="hidden sm:table-cell">Último check</TableHead>
@@ -128,9 +129,16 @@ export default function BranchTable({ landings, selectedIds, onToggleSelect, onT
                     )}
                   </TableCell>
                   <TableCell className="hidden sm:table-cell">
-                    <div className="flex items-center gap-1.5">
+                    {onCategoryChange ? (
+                      <CategoryPicker
+                        value={landing.categoria}
+                        onChange={(v) => onCategoryChange(landing.id, v)}
+                        categories={categories}
+                        triggerClassName="h-7 text-xs"
+                      />
+                    ) : (
                       <Badge variant="outline" className="text-xs">{landing.categoria}</Badge>
-                    </div>
+                    )}
                   </TableCell>
                   <TableCell className="hidden lg:table-cell">
                     {landing.ultimoStatus ? (

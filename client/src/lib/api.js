@@ -37,8 +37,11 @@ async function request(path, options = {}) {
   }
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ message: 'Error del servidor' }));
-    throw new Error(err.message || 'Error del servidor');
+    const body = await res.json().catch(() => ({ message: 'Error del servidor' }));
+    const error = new Error(body.message || 'Error del servidor');
+    error.status = res.status;
+    error.data = body;
+    throw error;
   }
 
   const contentType = res.headers.get('content-type');
@@ -119,6 +122,12 @@ export const api = {
 
   registerDeploy: (id) => request(`/landings/${id}/deploy`, { method: 'POST' }),
 
+  setLandingCategoria: (id, categoria) =>
+    request(`/landings/${id}/categoria`, { method: 'PATCH', body: JSON.stringify({ categoria }) }),
+
+  bulkSetCategoria: (ids, categoria) =>
+    request('/landings/bulk/categoria', { method: 'POST', body: JSON.stringify({ ids, categoria }) }),
+
   getUserSettings: () => request('/auth/me'),
 
   updateUserSettings: (data) =>
@@ -176,7 +185,8 @@ export const api = {
   getCategories: () => request('/categories'),
   createCategory: (data) => request('/categories', { method: 'POST', body: JSON.stringify(data) }),
   updateCategory: (id, data) => request(`/categories/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-  deleteCategory: (id) => request(`/categories/${id}`, { method: 'DELETE' }),
+  deleteCategory: (id, reassignTo) =>
+    request(`/categories/${id}${reassignTo ? `?reassignTo=${encodeURIComponent(reassignTo)}` : ''}`, { method: 'DELETE' }),
 
   getTemplateTypes: () => request('/template-types'),
   createTemplateType: (data) => request('/template-types', { method: 'POST', body: JSON.stringify(data) }),

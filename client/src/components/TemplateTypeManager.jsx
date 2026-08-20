@@ -1,10 +1,12 @@
 import { useState } from "react"
 import { Plus, Pencil, Trash2 } from "lucide-react"
 import { useTemplateTypes } from "../hooks/useTemplateTypes"
+import { useCategories } from "../hooks/useCategories"
 import { Button } from "./ui/button"
 import { Input } from "./ui/input"
 import { Label } from "./ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card"
+import CategoryPicker from "./CategoryPicker"
 import FieldDefinitionEditor from "./FieldDefinitionEditor"
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
@@ -14,14 +16,15 @@ const iconOptions = ["📄", "🌐", "🏢", "🔑", "🛒", "📱", "💻", "�
 
 export default function TemplateTypeManager() {
   const { data: types, loading, createTemplateType, updateTemplateType, deleteTemplateType } = useTemplateTypes()
+  const { data: categories = [] } = useCategories()
   const [openCreate, setOpenCreate] = useState(false)
   const [editId, setEditId] = useState(null)
-  const [form, setForm] = useState({ name: "", icon: "📄", description: "", hasMonitoring: false })
+  const [form, setForm] = useState({ name: "", icon: "📄", description: "", hasMonitoring: false, defaultCategory: "" })
   const [fields, setFields] = useState([])
   const [editingFields, setEditingFields] = useState(null)
 
   const resetForm = () => {
-    setForm({ name: "", icon: "📄", description: "", hasMonitoring: false })
+    setForm({ name: "", icon: "📄", description: "", hasMonitoring: false, defaultCategory: "" })
     setFields([])
     setEditId(null)
   }
@@ -44,7 +47,13 @@ export default function TemplateTypeManager() {
 
   const handleEdit = (type) => {
     setEditId(type.id)
-    setForm({ name: type.name, icon: type.icon || "📄", description: type.description || "", hasMonitoring: type.hasMonitoring })
+    setForm({
+      name: type.name,
+      icon: type.icon || "📄",
+      description: type.description || "",
+      hasMonitoring: type.hasMonitoring,
+      defaultCategory: type.defaultCategory || "",
+    })
     setOpenCreate(true)
   }
 
@@ -91,6 +100,26 @@ export default function TemplateTypeManager() {
                 <Label>Descripción</Label>
                 <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="¿Para qué se usa este tipo?" />
               </div>
+              <div className="flex flex-col space-y-2">
+                <Label>Categoría por defecto</Label>
+                <div className="flex gap-2">
+                  <CategoryPicker
+                    value={form.defaultCategory}
+                    onChange={(v) => setForm({ ...form, defaultCategory: v })}
+                    categories={categories}
+                    placeholder="Sin categoría por defecto"
+                    className="flex-1"
+                  />
+                  {form.defaultCategory && (
+                    <Button type="button" variant="outline" size="sm" onClick={() => setForm({ ...form, defaultCategory: "" })}>
+                      Quitar
+                    </Button>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Los activos creados con este template arrancan con esta categoría (después se puede cambiar).
+                </p>
+              </div>
               <div className="flex items-center gap-2">
                 <input type="checkbox" id="hasMonitoring" checked={form.hasMonitoring} onChange={(e) => setForm({ ...form, hasMonitoring: e.target.checked })} className="w-4 h-4" />
                 <Label htmlFor="hasMonitoring">Habilitar monitoreo (uptime/SSL)</Label>
@@ -129,6 +158,9 @@ export default function TemplateTypeManager() {
                   <CardTitle className="text-base">{type.name}</CardTitle>
                   {type.description && <p className="text-xs text-muted-foreground">{type.description}</p>}
                 </div>
+                {type.defaultCategory && (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary whitespace-nowrap">{type.defaultCategory}</span>
+                )}
                 {type.hasMonitoring && (
                   <span className="text-xs px-2 py-0.5 rounded-full bg-green-500/20 text-green-400">Monitoreo</span>
                 )}

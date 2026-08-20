@@ -4,6 +4,7 @@ import { ExternalLink, Pencil, Trash2, FileSpreadsheet, RefreshCw, Rocket, Store
 import { Badge } from "./ui/badge"
 import { Button } from "./ui/button"
 import { Card, CardContent, CardFooter, CardHeader } from "./ui/card"
+import CategoryPicker from "./CategoryPicker"
 import { api } from "../lib/api"
 
 const estadoColors = {
@@ -30,7 +31,7 @@ function timeAgo(date) {
   return `hace ${days}d`
 }
 
-export default function BranchCard({ landing, onEdit, onDelete, onCheck, categories = [] }) {
+export default function BranchCard({ landing, onEdit, onDelete, onCheck, onCategoryChange, categories = [] }) {
   const catColor = categories.find((c) => c.name === landing.categoria)?.color || "from-purple-600 to-pink-600"
   const [checking, setChecking] = useState(false)
   const [checkResult, setCheckResult] = useState(null)
@@ -129,9 +130,18 @@ export default function BranchCard({ landing, onEdit, onDelete, onCheck, categor
           <div className="absolute bottom-2 left-3 flex items-center gap-2 z-10">
             <span className={`w-2 h-2 rounded-full shadow-sm ${estadoColors[landing.estado] || "bg-gray-400"}`} />
             <span className="text-xs font-medium text-white/90 drop-shadow-sm">{estadoLabels[landing.estado] || landing.estado}</span>
-            <Badge variant="outline" className="text-xs text-white/90 border-white/30 bg-black/20 backdrop-blur-sm">
-              {landing.categoria}
-            </Badge>
+            {onCategoryChange ? (
+              <CategoryPicker
+                value={landing.categoria}
+                onChange={(v) => onCategoryChange(landing.id, v)}
+                categories={categories}
+                triggerClassName="h-6 w-auto gap-1 rounded-full border-white/30 bg-black/30 px-2 py-0 text-xs text-white/90 shadow-none backdrop-blur-sm hover:bg-black/50"
+              />
+            ) : (
+              <Badge variant="outline" className="text-xs text-white/90 border-white/30 bg-black/20 backdrop-blur-sm">
+                {landing.categoria}
+              </Badge>
+            )}
           </div>
 
           {/* Uptime badge on image */}

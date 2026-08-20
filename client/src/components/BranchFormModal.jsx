@@ -11,13 +11,15 @@ import { Input } from "./ui/input"
 import { Label } from "./ui/label"
 import { useTemplateTypes } from "../hooks/useTemplateTypes"
 import { useCategories } from "../hooks/useCategories"
+import CategoryPicker from "./CategoryPicker"
 
 const estados = ["ACTIVO", "INACTIVO", "EN_DESARROLLO"]
 
+// La categoría no está en esta lista: se muestra siempre en la cabecera del
+// formulario, tanto para el formulario clásico como para los templates.
 const legacyFields = [
   { name: "url", label: "URL", fieldType: "url", required: true, placeholder: "https://..." },
   { name: "cliente", label: "Cliente", fieldType: "text", placeholder: "Nombre del cliente" },
-  { name: "categoria", label: "Categoría", fieldType: "select", placeholder: "Seleccionar categoría" },
   { name: "estado", label: "Estado", fieldType: "selectEstado", placeholder: "Estado" },
   { name: "imagenUrl", label: "URL de la imagen de portada", fieldType: "url", placeholder: "https://ejemplo.com/screenshot.jpg" },
   { name: "formStatus", label: "Estado del formulario", fieldType: "selectFormStatus", placeholder: "Estado del form" },
@@ -35,7 +37,7 @@ const knownFields = new Set(["nombre", "marca", "url", "cliente", "estado", "cat
 
 export default function BranchFormModal({ onSubmit, initialData, onSuccess, onClose, children, defaultOpen }) {
   const [open, setOpen] = useState(defaultOpen || false)
-  const [form, setForm] = useState({ nombre: "", marca: "", url: "", estado: "ACTIVO", categoria: "Cober" })
+  const [form, setForm] = useState({ nombre: "", marca: "", url: "", estado: "ACTIVO", categoria: "" })
   const [error, setError] = useState("")
   const [selectedTypeId, setSelectedTypeId] = useState(initialData?.templateTypeId || null)
   const [step, setStep] = useState(initialData?.templateTypeId ? "fillForm" : "selectType")
@@ -50,7 +52,8 @@ export default function BranchFormModal({ onSubmit, initialData, onSuccess, onCl
 
   const allFields = useMemo(() => {
     if (isLegacy) return legacyFields
-    return templateFields
+    // "categoria" se maneja siempre desde la cabecera, nunca como campo del template.
+    return templateFields.filter((f) => f.name !== "categoria")
   }, [isLegacy, templateFields])
 
   const visibleFields = useMemo(() => {
@@ -66,7 +69,7 @@ export default function BranchFormModal({ onSubmit, initialData, onSuccess, onCl
           marca: initialData.marca || "",
           url: initialData.url || "",
           estado: initialData.estado || "ACTIVO",
-          categoria: initialData.categoria || "Cober",
+          categoria: initialData.categoria || "",
         })
         const parsedDyn = initialData.dynamicValues ? JSON.parse(initialData.dynamicValues) : {}
         setForm((prev) => ({ ...prev, ...parsedDyn }))
@@ -77,7 +80,7 @@ export default function BranchFormModal({ onSubmit, initialData, onSuccess, onCl
           : new Set()
         setHiddenFields(hidden)
       } else {
-        setForm({ nombre: "", marca: "", url: "", estado: "ACTIVO", categoria: "Cober" })
+        setForm({ nombre: "", marca: "", url: "", estado: "ACTIVO", categoria: "" })
         setSelectedTypeId(null)
         setStep("selectType")
         setHiddenFields(new Set())
@@ -85,6 +88,22 @@ export default function BranchFormModal({ onSubmit, initialData, onSuccess, onCl
       }
     }
   }, [open, initialData])
+
+  // Si todavía no hay categoría elegida, se precarga la primera disponible.
+  useEffect(() => {
+    if (!open || form.categoria || categories.length === 0) return
+    setForm((prev) => (prev.categoria ? prev : { ...prev, categoria: categories[0].name }))
+  }, [open, form.categoria, categories])
+
+  const handleSelectType = (type) => {
+    setSelectedTypeId(type?.id ?? null)
+    // El template puede traer una categoría por defecto configurada por el admin.
+    const fromTemplate = type?.defaultCategory
+    if (fromTemplate && categories.some((c) => c.name === fromTemplate)) {
+      setForm((prev) => ({ ...prev, categoria: fromTemplate }))
+    }
+    setStep("fillForm")
+  }
 
   const handleOpenChange = (v) => {
     setOpen(v)
@@ -118,14 +137,15 @@ export default function BranchFormModal({ onSubmit, initialData, onSuccess, onCl
         marca: form.marca,
         templateTypeId: selectedTypeId,
         visibleFields: [...allFields.map((f) => f.name).filter((n) => !hiddenFields.has(n))],
+        // Si queda vacía, el backend resuelve la categoría por defecto del template.
+        categoria: form.categoria || undefined,
       }
 
       if (isLegacy) {
         payload.url = form.url
         payload.estado = form.estado
-        payload.categoria = form.categoria
         for (const f of legacyFields) {
-          if (f.name !== "categoria" && f.name !== "estado" && f.name !== "formStatus") {
+          if (f.name !== "estado" && f.name !== "formStatus") {
             payload[f.name] = form[f.name] || ""
           }
         }
@@ -135,7 +155,6 @@ export default function BranchFormModal({ onSubmit, initialData, onSuccess, onCl
           payload.url = form.url
         }
         payload.estado = form.estado || "ACTIVO"
-        payload.categoria = form.categoria || "Cober"
         payload.formStatus = form.formStatus || "PENDIENTE"
 
         const dynamicValues = {}
@@ -158,19 +177,6 @@ export default function BranchFormModal({ onSubmit, initialData, onSuccess, onCl
   }
 
   const renderField = (field) => {
-    if (isLegacy && field.name === "categoria") {
-      return (
-        <div key={field.name} className="flex flex-col space-y-2">
-          <Label>{field.label}</Label>
-          <Select value={form.categoria} onValueChange={(v) => setForm({ ...form, categoria: v })}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {categories.map((c) => <SelectItem key={c.name} value={c.name}>{c.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
-      )
-    }
     if (isLegacy && field.name === "estado") {
       return (
         <div key={field.name} className="flex flex-col space-y-2">
@@ -258,7 +264,7 @@ export default function BranchFormModal({ onSubmit, initialData, onSuccess, onCl
             </DialogHeader>
             <div className="space-y-3 py-4">
               <button
-                onClick={() => { setSelectedTypeId(null); setStep("fillForm") }}
+                onClick={() => handleSelectType(null)}
                 className="w-full p-4 rounded-xl border border-input hover:border-primary hover:bg-accent transition-all text-left flex items-center gap-4"
               >
                 <span className="text-2xl">📋</span>
@@ -270,15 +276,18 @@ export default function BranchFormModal({ onSubmit, initialData, onSuccess, onCl
               {templateTypes.map((type) => (
                 <button
                   key={type.id}
-                  onClick={() => { setSelectedTypeId(type.id); setStep("fillForm") }}
+                  onClick={() => handleSelectType(type)}
                   className="w-full p-4 rounded-xl border border-input hover:border-primary hover:bg-accent transition-all text-left flex items-center gap-4"
                 >
                   <span className="text-2xl">{type.icon || "📄"}</span>
-                  <div>
+                  <div className="min-w-0">
                     <p className="font-medium">{type.name}</p>
                     <p className="text-xs text-muted-foreground">{type.description || ""}</p>
+                    {type.defaultCategory && (
+                      <p className="text-xs text-muted-foreground/70 mt-0.5">Categoría: {type.defaultCategory}</p>
+                    )}
                   </div>
-                  {type.hasMonitoring && <span className="text-xs px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 ml-auto">Monitoreo</span>}
+                  {type.hasMonitoring && <span className="text-xs px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 ml-auto shrink-0">Monitoreo</span>}
                 </button>
               ))}
             </div>
@@ -304,7 +313,7 @@ export default function BranchFormModal({ onSubmit, initialData, onSuccess, onCl
               )}
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="flex flex-col space-y-2">
                   <Label htmlFor="nombre">Nombre <span className="text-destructive">*</span></Label>
                   <Input id="nombre" name="nombre" value={form.nombre} onChange={handleChange} placeholder="BlackFriday 2026" required />
@@ -312,6 +321,20 @@ export default function BranchFormModal({ onSubmit, initialData, onSuccess, onCl
                 <div className="flex flex-col space-y-2">
                   <Label htmlFor="marca">Marca <span className="text-destructive">*</span></Label>
                   <Input id="marca" name="marca" value={form.marca} onChange={handleChange} placeholder="Nike" required />
+                </div>
+                <div className="flex flex-col space-y-2">
+                  <Label htmlFor="categoria">Categoría <span className="text-destructive">*</span></Label>
+                  <CategoryPicker
+                    id="categoria"
+                    value={form.categoria}
+                    onChange={(v) => setForm((prev) => ({ ...prev, categoria: v }))}
+                    categories={categories}
+                  />
+                  {categories.length === 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      No hay categorías creadas. Creá una desde el menú «Categorías».
+                    </p>
+                  )}
                 </div>
               </div>
 
