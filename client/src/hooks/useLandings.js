@@ -27,7 +27,8 @@ export function useLandings({ search, activeCategoria, activeStatus, activeUptim
     if (activeTag && (!l.tags || !l.tags.toLowerCase().includes(activeTag.toLowerCase()))) return false
     if (search) {
       const q = search.toLowerCase()
-      if (!l.nombre.toLowerCase().includes(q) && !l.marca.toLowerCase().includes(q) && !l.url.toLowerCase().includes(q)) return false
+      const haystack = [l.nombre, l.marca, l.url, l.cliente, l.categoria]
+      if (!haystack.some((v) => v && v.toLowerCase().includes(q))) return false
     }
     return true
   })
@@ -75,6 +76,29 @@ export function useLandings({ search, activeCategoria, activeStatus, activeUptim
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["landings"] }) },
   })
 
+  const invalidateLandingsAndCategories = () => {
+    queryClient.invalidateQueries({ queryKey: ["landings"] })
+    queryClient.invalidateQueries({ queryKey: ["categories"] })
+  }
+
+  const setCategoriaMutation = useMutation({
+    mutationFn: ({ id, categoria }) => api.setLandingCategoria(id, categoria),
+    onSuccess: (_, { categoria }) => {
+      invalidateLandingsAndCategories()
+      toast.success(`Categoría cambiada a "${categoria}"`)
+    },
+    onError: (err) => toast.error(err.message),
+  })
+
+  const bulkSetCategoriaMutation = useMutation({
+    mutationFn: ({ ids, categoria }) => api.bulkSetCategoria(ids, categoria),
+    onSuccess: (res, { categoria }) => {
+      invalidateLandingsAndCategories()
+      toast.success(`${res?.updated ?? 0} activo(s) movidos a "${categoria}"`)
+    },
+    onError: (err) => toast.error(err.message),
+  })
+
   return {
     landings,
     filteredLandings: filtered,
@@ -90,9 +114,12 @@ export function useLandings({ search, activeCategoria, activeStatus, activeUptim
     checkAllLandings: checkAllMutation.mutateAsync,
     bulkCheckLandings: bulkCheckMutation.mutateAsync,
     bulkDeleteLandings: bulkDeleteMutation.mutateAsync,
+    setLandingCategoria: (id, categoria) => setCategoriaMutation.mutateAsync({ id, categoria }),
+    bulkSetCategoria: (ids, categoria) => bulkSetCategoriaMutation.mutateAsync({ ids, categoria }),
     isCreating: createMutation.isPending,
     isUpdating: updateMutation.isPending,
     isCheckingAll: checkAllMutation.isPending,
     isBulkChecking: bulkCheckMutation.isPending,
+    isSettingCategoria: setCategoriaMutation.isPending || bulkSetCategoriaMutation.isPending,
   }
 }

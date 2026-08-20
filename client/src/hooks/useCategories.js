@@ -40,7 +40,10 @@ export function useUpdateCategory() {
   return useMutation({
     mutationFn: ({ id, data }) => api.updateCategory(id, data),
     onSuccess: () => {
+      // Renombrar arrastra la categoría en los activos: hay que refrescar ambas listas.
       qc.invalidateQueries({ queryKey: ["categories"] })
+      qc.invalidateQueries({ queryKey: ["landings"] })
+      qc.invalidateQueries({ queryKey: ["template-types"] })
       toast.success("Categoría actualizada")
     },
     onError: (err) => toast.error(err.message),
@@ -50,10 +53,16 @@ export function useUpdateCategory() {
 export function useDeleteCategory() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (id) => api.deleteCategory(id),
-    onSuccess: () => {
+    mutationFn: ({ id, reassignTo } = {}) => api.deleteCategory(id, reassignTo),
+    onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ["categories"] })
-      toast.success("Categoría eliminada")
+      qc.invalidateQueries({ queryKey: ["landings"] })
+      qc.invalidateQueries({ queryKey: ["template-types"] })
+      toast.success(
+        res?.reassigned
+          ? `Categoría eliminada — ${res.reassigned} activo(s) movidos a "${res.reassignedTo}"`
+          : "Categoría eliminada"
+      )
     },
     onError: (err) => toast.error(err.message),
   })
