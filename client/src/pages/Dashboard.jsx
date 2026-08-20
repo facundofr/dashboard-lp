@@ -152,8 +152,9 @@ export default function Dashboard() {
   const handleCategoryChange = async (id, categoria) => {
     try {
       await setLandingCategoria(id, categoria)
-    } catch {
-      // el toast de error lo dispara la mutación
+    } catch (err) {
+      // el toast de error lo dispara la mutación; esto queda como rastro en consola
+      console.error('No se pudo cambiar la categoría:', err)
     }
   }
 

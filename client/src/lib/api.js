@@ -123,7 +123,7 @@ export const api = {
   registerDeploy: (id) => request(`/landings/${id}/deploy`, { method: 'POST' }),
 
   setLandingCategoria: (id, categoria) =>
-    request(`/landings/${id}/categoria`, { method: 'PATCH', body: JSON.stringify({ categoria }) }),
+    request(`/landings/${id}/categoria`, { method: 'POST', body: JSON.stringify({ categoria }) }),
 
   bulkSetCategoria: (ids, categoria) =>
     request('/landings/bulk/categoria', { method: 'POST', body: JSON.stringify({ ids, categoria }) }),
