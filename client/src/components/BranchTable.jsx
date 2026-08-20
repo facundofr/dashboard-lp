@@ -146,21 +146,18 @@ export default function BranchTable({ landings, selectedIds, onToggleSelect, onT
                         landing.ultimoStatus === "UP" ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"
                       }`}>
                         <span className={`w-1.5 h-1.5 rounded-full ${landing.ultimoStatus === "UP" ? "bg-green-400" : "bg-red-400"}`} />
-                        {landing.ultimoStatus === "UP" ? `OK ${landing.ultimoCodigo || ""}` : "DOWN"}
-                        {landing.ultimoMs ? ` ${landing.ultimoMs}ms` : ""}
+                        {landing.ultimoStatus === "UP" ? "Online" : "Caída"}
                       </span>
                     ) : (
                       <span className="text-xs text-muted-foreground">—</span>
                     )}
                   </TableCell>
                   <TableCell className="hidden lg:table-cell">
-                    {landing.ultimoSslDias !== null ? (
+                    {typeof landing.ultimoSslValido === "boolean" ? (
                       <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium ${
-                        landing.ultimoSslDias > 30 ? "bg-green-500/20 text-green-400" :
-                        landing.ultimoSslDias > 7 ? "bg-yellow-500/20 text-yellow-400" :
-                        "bg-red-500/20 text-red-400"
+                        landing.ultimoSslValido ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"
                       }`}>
-                        {landing.ultimoSslDias}d
+                        {landing.ultimoSslValido ? "SSL" : "NO SSL"}
                       </span>
                     ) : (
                       <span className="text-xs text-muted-foreground">—</span>
@@ -225,12 +222,10 @@ export default function BranchTable({ landings, selectedIds, onToggleSelect, onT
                         }`}
                         style={{ transform: "translateY(-110%)" }}
                       >
-                        {result.url?.isUp
-                          ? `✓ ${result.url.statusCode || ""} — ${result.url.responseMs || ""}ms`
-                          : `✗ ${result.url?.error || "Error"}`}
+                        {result.url?.isUp ? "✓ Productiva" : "✗ Caída"}
                         {result.ssl?.valid !== undefined && (
                           <span className="ml-1.5 opacity-80">
-                            · SSL: {result.ssl.valid ? `${result.ssl.daysRemaining}d` : result.ssl.error || "Inválido"}
+                            · {result.ssl.valid ? "SSL" : "NO SSL"}
                           </span>
                         )}
                       </div>

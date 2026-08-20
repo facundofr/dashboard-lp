@@ -78,8 +78,7 @@ export default function BranchCard({ landing, onEdit, onDelete, onCheck, onCateg
       landing.ultimoStatus === "UP" ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"
     }`}>
       <span className={`w-1.5 h-1.5 rounded-full ${landing.ultimoStatus === "UP" ? "bg-green-400" : "bg-red-400"}`} />
-      {landing.ultimoStatus === "UP" ? `OK ${landing.ultimoCodigo || ""}` : "DOWN"}
-      {landing.ultimoMs ? ` ${landing.ultimoMs}ms` : ""}
+      {landing.ultimoStatus === "UP" ? "Online" : "Caída"}
     </span>
   ) : null
 
@@ -249,35 +248,14 @@ export default function BranchCard({ landing, onEdit, onDelete, onCheck, onCateg
             </div>
           )}
 
-          {/* Meta tags */}
-          {landing.metaTags && (() => {
-            const tags = typeof landing.metaTags === 'string' ? JSON.parse(landing.metaTags) : landing.metaTags
-            if (tags.error) return null
-            return (
-              <div className="flex flex-wrap gap-1">
-                {tags.gtm && <span className="text-xs px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-400 font-mono">{tags.gtm}</span>}
-                {tags.ga && <span className="text-xs px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 font-mono">{tags.ga}</span>}
-                {tags.fbPixel && <span className="text-xs px-1.5 py-0.5 rounded bg-blue-600/20 text-blue-400 font-mono">FB Pixel</span>}
-                {tags.gsc && <span className="text-xs px-1.5 py-0.5 rounded bg-green-500/20 text-green-400">GSC</span>}
-                {tags.ogTitle && <span className="text-xs px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400">OG</span>}
-              </div>
-            )
-          })()}
-
           {/* SSL */}
-          {landing.ultimoSslDias !== null && (
+          {typeof landing.ultimoSslValido === "boolean" && (
             <div className="flex items-center gap-1.5">
               <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium ${
-                landing.ultimoSslDias > 30 ? "bg-green-500/20 text-green-400" :
-                landing.ultimoSslDias > 7 ? "bg-yellow-500/20 text-yellow-400" :
-                "bg-red-500/20 text-red-400"
+                landing.ultimoSslValido ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"
               }`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${
-                  landing.ultimoSslDias > 30 ? "bg-green-400" :
-                  landing.ultimoSslDias > 7 ? "bg-yellow-400" :
-                  "bg-red-400"
-                }`} />
-                SSL: {landing.ultimoSslDias}d
+                <span className={`w-1.5 h-1.5 rounded-full ${landing.ultimoSslValido ? "bg-green-400" : "bg-red-400"}`} />
+                {landing.ultimoSslValido ? "SSL" : "NO SSL"}
               </span>
             </div>
           )}
@@ -298,13 +276,9 @@ export default function BranchCard({ landing, onEdit, onDelete, onCheck, onCateg
             <div className={`text-xs px-2 py-1 rounded ${
               checkResult.url?.isUp ? "bg-green-500/10 text-green-400" : "bg-red-500/10 text-red-400"
             }`}>
-              {checkResult.url?.isUp
-                ? `✓ ${checkResult.url.statusCode} — ${checkResult.url.responseMs}ms`
-                : `✗ ${checkResult.url?.error || "Error"}`}
+              {checkResult.url?.isUp ? "✓ Productiva" : "✗ Caída"}
               {checkResult.ssl?.valid !== undefined && (
-                <span className="ml-2">
-                  SSL: {checkResult.ssl.valid ? `${checkResult.ssl.daysRemaining}d` : checkResult.ssl.error || "Inválido"}
-                </span>
+                <span className="ml-2">{checkResult.ssl.valid ? "SSL" : "NO SSL"}</span>
               )}
             </div>
           )}
